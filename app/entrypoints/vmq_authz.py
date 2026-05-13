@@ -1,40 +1,50 @@
 """Entrypoint for the `vmq-authz` Deployment.
 
-Tiny FastAPI app that answers VerneMQ `vmq_webhooks` hooks. Latency is
-the priority: the broker blocks on each MQTT operation waiting for our
-response, so the service is intentionally minimal.
-
-Full hook handlers land in Phase 2.
+A tiny FastAPI process serving only the VerneMQ webhook routes. Same
+code as in the main `api` app — but isolated for latency and blast-
+radius reasons (VerneMQ blocks on each hook call).
 """
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
 
 from app import __version__
+from app.api.internal import vmq_authz as vmq_authz_router
+from app.core.errors import RainmakerError
+from app.core.logging import configure_logging
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_logging()
+    yield
 
 
 def create_authz_app() -> FastAPI:
-    app = FastAPI(title="rainmaker-vmq-authz", version=__version__)
+    app = FastAPI(
+        title="rainmaker-vmq-authz",
+        version=__version__,
+        default_response_class=ORJSONResponse,
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/auth/on_register")
-    async def on_register() -> dict[str, str]:
-        # TODO(Phase 2): extract CN from peer certificate, check revocation.
-        return {"result": "next"}
+    app.include_router(vmq_authz_router.router)
 
-    @app.post("/auth/on_publish")
-    async def on_publish() -> dict[str, str]:
-        # TODO(Phase 2): enforce `node/<cn>/#` namespace.
-        return {"result": "next"}
-
-    @app.post("/auth/on_subscribe")
-    async def on_subscribe() -> dict[str, str]:
-        return {"result": "next"}
+    @app.exception_handler(RainmakerError)
+    async def rainmaker_handler(_, exc: RainmakerError):
+        return ORJSONResponse(status_code=exc.status_code, content=exc.detail)
 
     return app
 

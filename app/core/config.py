@@ -52,7 +52,12 @@ class Settings(BaseSettings):
     pki_country: str = "FR"
     pki_org: str = "ESP RainMaker Self-Hosted"
     pki_ca_cn: str = "ESP RainMaker Root CA"
+    pki_ca_intermediate_cn: str = "ESP RainMaker Intermediate CA"
+    pki_ca_cert_path: Path | None = None
+    pki_ca_key_path: Path | None = None
+    pki_ca_root_cert_path: Path | None = None
     cert_validity_days: int = 365 * 5
+    claim_challenge_ttl_seconds: int = 600
 
     email_from: str = "no-reply@rainmaker.local"
     smtp_host: str = "localhost"
