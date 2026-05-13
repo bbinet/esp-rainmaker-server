@@ -3,7 +3,17 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.internal import vmq_authz as vmq_authz_router
-from app.api.v1.routes import auth, claim, health, meta, node, user, user_nodes
+from app.api.v1.routes import (
+    auth,
+    claim,
+    health,
+    meta,
+    node,
+    ota_admin,
+    ota_user,
+    user,
+    user_nodes,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -18,3 +28,5 @@ v1_router.include_router(auth.router)
 v1_router.include_router(user.router)
 v1_router.include_router(user_nodes.router)
 v1_router.include_router(node.router)
+v1_router.include_router(ota_admin.router)
+v1_router.include_router(ota_user.router)

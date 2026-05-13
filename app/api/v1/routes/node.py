@@ -10,10 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps.db import get_db
 from app.api.v1.deps.mtls import get_node_from_mtls
-from app.core.errors import RainmakerError
+from app.core.errors import invalid_request
 from app.models.node import Node
 from app.schemas.common import SuccessResponse
 from app.services import node as node_service
+from app.services import ota as ota_service
 
 router = APIRouter(tags=["node"])
 
@@ -44,18 +45,7 @@ async def get_node_otafetch(
     node: Node = Depends(get_node_from_mtls),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Return the pending OTA job for this node, or a no-op `wait`.
-
-    Phase 6 fills in the actual job-lookup logic; until then we tell the
-    firmware to back off so it doesn't busy-poll.
-    """
-    _ = (node, db)
-    return {
-        "ota_available": False,
-        "action": "wait",
-        "min_wait": 60,
-        "max_wait": 600,
-    }
+    return await ota_service.fetch_pending_for_node(db, node_id=node.node_id)
 
 
 @router.post("/node/otastatus", response_model=SuccessResponse)
@@ -64,13 +54,15 @@ async def post_node_otastatus(
     node: Node = Depends(get_node_from_mtls),
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse:
-    """Record an OTA status report.
-
-    Phase 6 wires this against `ota_job_nodes`. Until then, if there is
-    no known job for the (node, ota_job_id) pair we return 404.
-    """
-    _ = (node, db)
-    raise RainmakerError(404, 105012, "OTA job not found")  # ErrorCode.OTA_JOB_NOT_FOUND
-
-
-# Stable export name (so the v1_router include is symmetric with other routes).
+    job_id = payload.get("ota_job_id")
+    status_value = payload.get("status")
+    if not job_id or not status_value:
+        raise invalid_request("ota_job_id and status required")
+    await ota_service.update_status(
+        db,
+        node_id=node.node_id,
+        ota_job_id=job_id,
+        status=status_value,
+        additional_info=payload.get("additional_info"),
+    )
+    return SuccessResponse(description="OTA status recorded")
