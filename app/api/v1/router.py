@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.internal import vmq_authz as vmq_authz_router
 from app.api.v1.routes import (
     auth,
+    automations,
     claim,
     groups,
     health,
@@ -13,6 +14,7 @@ from app.api.v1.routes import (
     ota_admin,
     ota_user,
     sharing,
+    tsdata,
     user,
     user_nodes,
 )
@@ -33,6 +35,8 @@ v1_router.include_router(user.router)
 # eclipse `DELETE /user/nodes/sharing` and similar fixed paths.
 v1_router.include_router(sharing.router)
 v1_router.include_router(groups.router)
+v1_router.include_router(automations.router)
+v1_router.include_router(tsdata.router)
 v1_router.include_router(user_nodes.router)
 v1_router.include_router(node.router)
 v1_router.include_router(ota_admin.router)

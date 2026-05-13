@@ -172,8 +172,63 @@ async def _handle_otastatus(db: AsyncSession, node_id: str, payload: dict) -> No
 
 
 async def _handle_tsdata(db: AsyncSession, node_id: str, payload: dict) -> None:
-    """Phase 8 will write to the Timescale hypertable. For now: no-op."""
-    _ = (db, node_id, payload)
+    """Bulk ts_data form: { ts_data: [{name, dt, records: [{t, v}, ...]}, ...] }."""
+    if not isinstance(payload, dict):
+        return
+    series = payload.get("ts_data")
+    if not isinstance(series, list):
+        return
+    from app.services import tsdata as tsdata_service
+
+    for entry in series:
+        full_name = entry.get("name", "")
+        if "." not in full_name:
+            continue
+        device_name, param_name = full_name.split(".", 1)
+        dt = entry.get("dt", "int")
+        records = entry.get("records") or []
+        points: list = []
+        for r in records:
+            try:
+                ts = datetime.fromtimestamp(int(r["t"]), tz=UTC)
+            except (TypeError, ValueError, KeyError):
+                continue
+            points.append((ts, r.get("v")))
+        if points:
+            await tsdata_service.insert_tsdata(
+                db,
+                node_id=node_id,
+                device_name=device_name,
+                param_name=param_name,
+                data_type=dt,
+                points=points,
+            )
+
+
+async def _handle_simple_tsdata(db: AsyncSession, node_id: str, payload: dict) -> None:
+    """Simple form: { name, dt, t, v }."""
+    if not isinstance(payload, dict):
+        return
+    full_name = payload.get("name", "")
+    if "." not in full_name:
+        return
+    device_name, param_name = full_name.split(".", 1)
+    dt = payload.get("dt", "int")
+    try:
+        ts = datetime.fromtimestamp(int(payload["t"]), tz=UTC)
+    except (TypeError, ValueError, KeyError):
+        return
+
+    from app.services import tsdata as tsdata_service
+
+    await tsdata_service.insert_tsdata(
+        db,
+        node_id=node_id,
+        device_name=device_name,
+        param_name=param_name,
+        data_type=dt,
+        points=[(ts, payload.get("v"))],
+    )
 
 
 async def _handle_alert(db: AsyncSession, node_id: str, payload: dict) -> None:
@@ -190,6 +245,6 @@ _HANDLERS = {
     _t.USER_MAPPING: _handle_user_mapping,
     _t.OTASTATUS: _handle_otastatus,
     _t.TSDATA: _handle_tsdata,
-    _t.SIMPLE_TSDATA: _handle_tsdata,
+    _t.SIMPLE_TSDATA: _handle_simple_tsdata,
     _t.ALERT: _handle_alert,
 }
