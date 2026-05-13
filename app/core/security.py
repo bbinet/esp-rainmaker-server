@@ -74,7 +74,8 @@ def decode_token(token: str, *, expected_kind: TokenKind | None = None) -> dict[
         algorithms=[settings.jwt_algorithm],
     )
     if expected_kind is not None and payload.get("token_use") != expected_kind:
-        raise jwt.InvalidTokenError(f"Expected {expected_kind} token, got {payload.get('token_use')}")
+        got = payload.get("token_use")
+        raise jwt.InvalidTokenError(f"Expected {expected_kind} token, got {got}")
     return payload
 
 

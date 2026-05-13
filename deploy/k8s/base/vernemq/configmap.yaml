@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vernemq-config
+data:
+  vernemq.conf: |
+    allow_anonymous = off
+    listener.ssl.default = 0.0.0.0:8883
+    listener.ssl.default.cafile = /etc/vernemq/certs/ca-chain.pem
+    listener.ssl.default.certfile = /etc/vernemq/certs/server.pem
+    listener.ssl.default.keyfile = /etc/vernemq/certs/server.key
+    listener.ssl.default.require_certificate = on
+    listener.ssl.default.use_identity_as_username = on
+    listener.ssl.default.tls_version = tlsv1.2
+    listener.wss.default = 0.0.0.0:8084
+    listener.wss.default.cafile = /etc/vernemq/certs/ca-chain.pem
+    listener.wss.default.certfile = /etc/vernemq/certs/server.pem
+    listener.wss.default.keyfile = /etc/vernemq/certs/server.key
+    plugins.vmq_webhooks = on
+    plugins.vmq_passwd = off
+    plugins.vmq_acl = off
+    vmq_webhooks.pool_timeout = 5000
+    vmq_webhooks.auth_on_register.hook = auth_on_register
+    vmq_webhooks.auth_on_register.endpoint = http://vmq-authz:8001/auth/on_register
+    vmq_webhooks.auth_on_publish.hook = auth_on_publish
+    vmq_webhooks.auth_on_publish.endpoint = http://vmq-authz:8001/auth/on_publish
+    vmq_webhooks.auth_on_subscribe.hook = auth_on_subscribe
+    vmq_webhooks.auth_on_subscribe.endpoint = http://vmq-authz:8001/auth/on_subscribe
+    vmq_webhooks.on_client_online.hook = on_client_online
+    vmq_webhooks.on_client_online.endpoint = http://vmq-authz:8001/on_client_online
+    vmq_webhooks.on_client_offline.hook = on_client_offline
+    vmq_webhooks.on_client_offline.endpoint = http://vmq-authz:8001/on_client_offline
+    listener.http.default = 0.0.0.0:8888

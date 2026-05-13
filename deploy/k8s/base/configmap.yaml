@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rainmaker-config
+data:
+  RM_ENV: prod
+  RM_LOG_LEVEL: INFO
+  RM_LOG_JSON: "true"
+  RM_API_V1_PREFIX: /v1
+  RM_DATABASE_POOL_SIZE: "10"
+  RM_DATABASE_MAX_OVERFLOW: "20"
+  RM_MQTT_BROKER_HOST: vernemq
+  RM_MQTT_BROKER_PORT: "8883"
+  RM_MQTT_WS_HOST: vernemq
+  RM_MQTT_WS_PORT: "8084"
+  RM_MINIO_ENDPOINT: garage:3900
+  RM_MINIO_BUCKET_OTA: rainmaker-ota
+  RM_MINIO_BUCKET_FILES: rainmaker-files
+  RM_MINIO_REGION: garage
+  RM_FEATURE_MQTT_ENABLED: "true"
