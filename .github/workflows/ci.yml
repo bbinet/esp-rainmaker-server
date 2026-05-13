@@ -85,26 +85,16 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install Python deps (venv at .venv/ — scripts reference it)
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -e ".[dev]"
+      - name: Install Python deps
+        # `make install` creates .venv/ + installs the editable package + dev
+        # extras. Both live_verify*.sh and gen_pki.py expect .venv/bin/python.
+        run: make install
 
-      - name: Generate dev PKI
-        run: .venv/bin/python scripts/gen_pki.py
-
-      - name: Resolve Ingress hostnames to localhost
-        run: |
-          echo "127.0.0.1 api.local claim.local node.local" | sudo tee -a /etc/hosts
-
-      - name: Bring up the stack
-        run: |
-          docker compose up -d --build --wait
-          docker compose ps
-
-      - name: Initialise Garage (one-shot)
-        run: bash scripts/init_garage.sh
+      - name: Bootstrap compose stack (PKI + compose-up --wait + Garage init + /etc/hosts)
+        run: make compose-stack
+        # Re-up api with the real Garage S3 backend so OTA tests don't fall
+        # back to the in-memory stub. Garage credentials were written by
+        # `make compose-stack` to var/garage-credentials.env.
 
       - name: Re-up api with real S3 backend
         run: |
@@ -130,11 +120,8 @@ jobs:
           echo "::error::api did not become reachable via NGINX within 60s"
           exit 1
 
-      - name: Test #2 / #7 / #9 — live_verify.sh (21 cases)
-        run: bash scripts/live_verify.sh
-
-      - name: NGINX mTLS + scale + read-only — live_verify_prod_like.sh (13 cases)
-        run: bash scripts/live_verify_prod_like.sh
+      - name: live_verify scripts — 21 + 13 cases
+        run: make test-live
 
       - name: Dump compose logs on failure
         if: failure()
@@ -203,4 +190,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose down -v --remove-orphans
+        run: make compose-down

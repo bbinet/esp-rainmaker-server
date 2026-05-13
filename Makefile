@@ -89,10 +89,12 @@ compose-up:
 compose-down:
 	docker compose down -v --remove-orphans
 
-# Full local bootstrap: stack + dev PKI + Garage layout/key/bucket + /etc/hosts
+# Full local bootstrap: dev PKI (BEFORE compose-up so vernemq sees the
+# certs at startup) + stack + Garage layout/key/bucket + /etc/hosts
 # entries so curl + fake_node.py can reach NGINX vhosts. Idempotent.
-compose-stack: compose-up
+compose-stack:
 	@if [ ! -f var/pki/ca-chain.pem ]; then $(PY) scripts/gen_pki.py; fi
+	docker compose up -d --build --wait
 	bash scripts/init_garage.sh
 	@if ! grep -q "api.local claim.local node.local" /etc/hosts 2>/dev/null; then \
 	  echo "127.0.0.1 api.local claim.local node.local" | sudo tee -a /etc/hosts >/dev/null \
