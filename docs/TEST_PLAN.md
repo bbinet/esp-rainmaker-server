@@ -51,22 +51,32 @@ Composants : `postgres` (timescaledb-pg16), `garage`, `vernemq`, `smtp4dev`,
 
 ### A.3 Vérifications santé
 
+Le compose dev place NGINX devant `api` ; le port 8000 du container n'est pas
+exposé sur l'hôte. Deux chemins de test possibles :
+
+- **Via NGINX** : ajouter `127.0.0.1 api.local claim.local node.local` à `/etc/hosts`,
+  puis `curl --cacert var/pki/ca-chain.pem https://api.local/...`
+- **Via `docker compose exec`** : `docker compose exec api curl -s localhost:8000/...`
+
 | Check | Commande | Attendu |
 |---|---|---|
-| API alive | `curl localhost:8000/healthz` | `{"status":"ok",...}` |
-| DB ready | `curl localhost:8000/readyz` | `{"status":"ok","components":{"db":"ok"}}` |
-| mqtt_host | `curl localhost:8000/v1/mqtt_host` | broker host:port |
+| API alive | `curl --cacert var/pki/ca-chain.pem https://api.local/healthz` | `{"status":"ok",...}` |
+| DB ready | `curl --cacert var/pki/ca-chain.pem https://api.local/readyz` | `{"status":"ok","components":{"db":"ok"}}` |
+| mqtt_host | `curl --cacert var/pki/ca-chain.pem https://api.local/v1/mqtt_host` | broker host:port |
 | smtp4dev UI | navigateur → http://localhost:5080 | UI vide |
 | VerneMQ HTTP | `curl localhost:8888/metrics` | métriques Prometheus |
-| vmq-authz | `curl localhost:8001/healthz` | `{"status":"ok"}` |
+| vmq-authz | `docker compose exec vmq-authz curl -s localhost:8001/healthz` | `{"status":"ok"}` |
 | Webhooks enregistrés | `docker compose exec vernemq vmq-admin webhooks show` | 4 hooks listés |
 | Logs propres | `docker compose logs api vmq-authz mqtt-ingestor worker` | pas d'exception |
 
 ### A.4 Smoke fonctionnel auth
 
 ```bash
+export API=https://api.local
+export CURL='curl --cacert var/pki/ca-chain.pem'
+
 # Signup
-curl -X POST localhost:8000/v1/user2 -H 'content-type: application/json' \
+$CURL -X POST $API/v1/user2 -H 'content-type: application/json' \
   -d '{"user_name":"alice@local","password":"Alice-Pass-1!"}'
 
 # Récupérer le code (dans smtp4dev OU en BDD)
@@ -74,16 +84,20 @@ docker compose exec postgres psql -U rainmaker -c \
   "SELECT user_name, confirm_code FROM users WHERE user_name='alice@local';"
 
 # Confirmer
-curl -X PUT localhost:8000/v1/user2 -H 'content-type: application/json' \
+$CURL -X PUT $API/v1/user2 -H 'content-type: application/json' \
   -d '{"user_name":"alice@local","verification_code":"<CODE>"}'
 
 # Login → récupérer accesstoken (lowercase, sans Bearer)
-curl -X POST localhost:8000/v1/login2 -H 'content-type: application/json' \
+$CURL -X POST $API/v1/login2 -H 'content-type: application/json' \
   -d '{"user_name":"alice@local","password":"Alice-Pass-1!"}'
 
 # Accès protégé
-curl localhost:8000/v1/user2 -H "Authorization: <accesstoken>"
+$CURL $API/v1/user2 -H "Authorization: <accesstoken>"
 ```
+
+ℹ️ Note : `scripts/live_verify.sh` automatise les Tests #2/#7/#9 (21 checks)
+et `scripts/live_verify_prod_like.sh` couvre les chemins NGINX + mTLS + scale
+(13 checks). Voir `make e2e` ou les scripts directement.
 
 ✅ **Critères succès A** : les 4 curl répondent 200, le mail de confirmation
 arrive dans smtp4dev, l'API rejette `Authorization: Bearer <token>` (401).

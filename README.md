@@ -6,8 +6,10 @@ specs in `swagger/`) and compatible with both the official ESP firmware
 React Native app
 ([`espressif/esp-rainmaker-home`](https://github.com/espressif/esp-rainmaker-home)).
 
-Designed to be deployed on Kubernetes, with the Espressif AWS-managed pieces
-(Cognito, IoT Core, S3, DynamoDB) replaced by self-hosted equivalents:
+Designed to be deployed on **Docker Compose (single host)** or **Kubernetes
+(multi-host)** — see [Deployment targets](#deployment-targets) below. The
+Espressif AWS-managed pieces (Cognito, IoT Core, S3, DynamoDB) are replaced by
+self-hosted equivalents:
 
 | AWS component | Self-hosted replacement |
 |---|---|
@@ -65,12 +67,22 @@ make test
 make dev   # uvicorn on http://localhost:8000
 ```
 
-Sanity check:
+Sanity check (the dev compose stack puts NGINX in front of `api`, so the
+container's port 8000 is not bound to the host — go through NGINX or `exec`
+into the container):
 
 ```bash
+# Through the NGINX Ingress emulator (production-shaped path)
+echo "127.0.0.1 api.local claim.local node.local" | sudo tee -a /etc/hosts
+curl --cacert var/pki/ca-chain.pem https://api.local/healthz
+curl --cacert var/pki/ca-chain.pem https://api.local/v1/apiversions
+curl --cacert var/pki/ca-chain.pem https://api.local/v1/mqtt_host
+
+# Or hit the container directly (handy when debugging)
+docker compose exec api curl -s localhost:8000/healthz
+
+# In `make dev` mode (uvicorn outside docker), port 8000 is bound:
 curl http://localhost:8000/healthz
-curl http://localhost:8000/v1/apiversions
-curl http://localhost:8000/v1/mqtt_host
 ```
 
 ## Project layout
@@ -93,21 +105,33 @@ tests/{unit,integration}/
 
 deploy/
 ├── docker/Dockerfile   # multi-stage; one image, four CMDs
+├── nginx/              # NGINX Ingress emulator (3 vhosts, mTLS on node.*)
 ├── vernemq/            # broker config (mTLS + webhooks)
 ├── garage/             # garage.toml
+├── compose/            # production overlay + .env template + README
 └── k8s/
     ├── base/           # kustomize base (one folder per component)
     └── overlays/{dev,staging,prod}/
 
+scripts/
+├── gen_pki.py              # dev PKI (root+intermediate+server certs)
+├── init_garage.sh          # one-shot Garage layout + bucket + key
+├── fake_node.py            # firmware simulator (claim, MQTT, otafetch)
+├── live_verify.sh          # live test cases (Test #2/#7/#9, 21 checks)
+└── live_verify_prod_like.sh # NGINX + mTLS + scale + read-only fs (13 checks)
+
 swagger/                # upstream RainMaker OpenAPI specs (read-only)
 docs/REFERENCE.md       # consolidated knowledge dump
+docs/TEST_PLAN.md       # end-to-end paliers A→F
 ```
 
 ## Configuration
 
 All config is sourced from `RM_*` env vars; see [`.env.example`](.env.example)
-and `app/core/config.py`. In Kubernetes, `ConfigMap rainmaker-config` holds
-non-secret values and `Secret rainmaker-*` holds credentials and PKI material.
+(dev) and [`deploy/compose/.env.prod.example`](deploy/compose/.env.prod.example)
+(prod-compose) and `app/core/config.py`. In Kubernetes, `ConfigMap
+rainmaker-config` holds non-secret values and `Secret rainmaker-*` holds
+credentials and PKI material.
 
 ## Authentication contract (matches the official TypeScript SDK)
 
