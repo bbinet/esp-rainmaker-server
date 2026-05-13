@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +21,6 @@ async def user_ota_status(
     node_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     await access_service.require_access(db, user_id=user.id, node_id=node_id)
     return await ota_service.get_status_for_node(db, node_id=node_id)

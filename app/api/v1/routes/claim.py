@@ -8,6 +8,7 @@ from the same backend Service, with Ingress routing on hostname.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,10 +24,10 @@ router = APIRouter(tags=["claim"])
 
 @router.post("/claim/initiate")
 async def claim_initiate(
-    payload: dict,
+    payload: dict[str, Any],
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     mac_addr = payload.get("mac_addr")
     platform = payload.get("platform")
     if not mac_addr or not platform:
@@ -42,10 +43,10 @@ async def claim_initiate(
 
 @router.post("/claim/verify")
 async def claim_verify(
-    payload: dict,
+    payload: dict[str, Any],
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     csr = payload.get("csr")
     if not csr:
         raise invalid_request("csr required")

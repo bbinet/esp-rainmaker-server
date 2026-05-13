@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
@@ -41,7 +41,9 @@ class UserNodeMapping(Base, TimestampMixin):
     )
     role: Mapped[str] = mapped_column(String(16), default="primary", nullable=False)
     primary: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, default=dict, nullable=False
+    )
 
     user: Mapped[User] = relationship(back_populates="mappings")
     node: Mapped[Node] = relationship(back_populates="mappings")

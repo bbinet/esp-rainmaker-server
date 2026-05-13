@@ -18,6 +18,7 @@ Decision model:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +33,7 @@ def _is_backend(username: str | None) -> bool:
     return username == get_settings().mqtt_internal_user
 
 
-async def authorise_register(db: AsyncSession, *, username: str | None) -> dict:
+async def authorise_register(db: AsyncSession, *, username: str | None) -> dict[str, Any]:
     if not username:
         return {"result": {"error": "missing username"}}
     if _is_backend(username):
@@ -61,7 +62,7 @@ def _allowed_topic(username: str, topic: str) -> bool:
     return topic.startswith(prefix)
 
 
-async def authorise_publish(*, username: str | None, topic: str) -> dict:
+async def authorise_publish(*, username: str | None, topic: str) -> dict[str, Any]:
     if not topic:
         return {"result": {"error": "missing topic"}}
     if _is_backend(username):
@@ -73,7 +74,9 @@ async def authorise_publish(*, username: str | None, topic: str) -> dict:
     return {"result": "ok"}
 
 
-async def authorise_subscribe(*, username: str | None, topics: list[dict] | None) -> dict:
+async def authorise_subscribe(
+    *, username: str | None, topics: list[dict[str, Any]] | None
+) -> dict[str, Any]:
     if _is_backend(username):
         return {"result": "ok"}
     if not username:

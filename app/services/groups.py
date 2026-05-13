@@ -9,6 +9,7 @@ automation policies) can honour. Membership is captured in
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +27,7 @@ async def create_group(
     group_type: str | None = None,
     mutually_exclusive: bool = False,
     nodes: list[str] | None = None,
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> NodeGroup:
     if not name:
         raise invalid_request("group_name required")
@@ -61,12 +62,12 @@ async def create_group(
 
 async def list_groups(
     db: AsyncSession, *, owner_id: uuid.UUID, group_id: uuid.UUID | None = None
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     query = select(NodeGroup).where(NodeGroup.owner_id == owner_id)
     if group_id is not None:
         query = query.where(NodeGroup.id == group_id)
     rows = (await db.execute(query)).scalars().all()
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     for g in rows:
         node_ids = (
             (await db.execute(select(NodeGroupNode.node_id).where(NodeGroupNode.group_id == g.id)))

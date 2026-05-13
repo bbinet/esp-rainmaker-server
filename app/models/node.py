@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
@@ -36,7 +36,9 @@ class Node(Base, TimestampMixin):
     online: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     registration_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
-    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, default=dict, nullable=False
+    )
 
     attributes: Mapped[list[NodeAttribute]] = relationship(
         back_populates="node", cascade="all, delete-orphan"
@@ -72,7 +74,7 @@ class NodeConfig(Base, TimestampMixin):
         ForeignKey("nodes.node_id", ondelete="CASCADE"), primary_key=True
     )
     config_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
     node: Mapped[Node] = relationship(back_populates="config")
 
@@ -83,7 +85,7 @@ class NodeParamsShadow(Base, TimestampMixin):
     node_id: Mapped[str] = mapped_column(
         ForeignKey("nodes.node_id", ondelete="CASCADE"), primary_key=True
     )
-    payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
     node: Mapped[Node] = relationship(back_populates="params_shadow")
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,10 +19,10 @@ router = APIRouter(tags=["ota-admin"])
 
 @router.post("/admin/otaimage/upload_request")
 async def admin_upload_request(
-    payload: dict,
+    payload: dict[str, Any],
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     _ = admin
     name = payload.get("name")
     fw_version = payload.get("fw_version")
@@ -40,10 +41,10 @@ async def admin_upload_request(
 
 @router.post("/admin/otaimage/upload_confirm")
 async def admin_upload_confirm(
-    payload: dict,
+    payload: dict[str, Any],
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     _ = admin
     try:
         image_id = uuid.UUID(payload["ota_image_id"])
@@ -60,10 +61,10 @@ async def admin_upload_confirm(
 
 @router.post("/admin/otajob")
 async def admin_create_otajob(
-    payload: dict,
+    payload: dict[str, Any],
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     name = payload.get("name")
     try:
         image_id = uuid.UUID(payload["ota_image_id"])

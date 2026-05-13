@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,7 +58,7 @@ async def signup(
 
 @router.put("/user2", response_model=SuccessResponse)
 async def confirm_signup_or_update(
-    payload: dict,
+    payload: dict[str, Any],
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse:
     """Dual-purpose endpoint mirroring the SDK:

@@ -8,6 +8,7 @@ this module is the storage + API surface only.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,10 +22,10 @@ async def create_automation(
     *,
     user_id: uuid.UUID,
     name: str,
-    events: list,
-    actions: list,
+    events: list[Any],
+    actions: list[Any],
     event_operator: str = "and",
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Automation:
     row = Automation(
         user_id=user_id,
@@ -53,7 +54,7 @@ async def update_automation(
     *,
     user_id: uuid.UUID,
     automation_id: uuid.UUID,
-    patch: dict,
+    patch: dict[str, Any],
 ) -> Automation:
     row = (
         await db.execute(
@@ -93,7 +94,7 @@ async def delete_automation(
     await db.commit()
 
 
-def serialise(row: Automation) -> dict:
+def serialise(row: Automation) -> dict[str, Any]:
     return {
         "automation_id": str(row.id),
         "name": row.name,

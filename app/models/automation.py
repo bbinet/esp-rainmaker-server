@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import JSON, Boolean, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -22,6 +23,8 @@ class Automation(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     event_operator: Mapped[str] = mapped_column(String(8), default="and", nullable=False)
-    events: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
-    actions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
-    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    events: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    actions: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, default=dict, nullable=False
+    )

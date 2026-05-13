@@ -7,10 +7,11 @@ radius reasons (VerneMQ blocks on each hook call).
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
 
 from app import __version__
@@ -20,7 +21,8 @@ from app.core.logging import configure_logging
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    _ = app
     configure_logging()
     yield
 
@@ -43,7 +45,8 @@ def create_authz_app() -> FastAPI:
     app.include_router(vmq_authz_router.router)
 
     @app.exception_handler(RainmakerError)
-    async def rainmaker_handler(_, exc: RainmakerError):
+    async def rainmaker_handler(request: Request, exc: RainmakerError) -> ORJSONResponse:
+        _ = request
         return ORJSONResponse(status_code=exc.status_code, content=exc.detail)
 
     return app

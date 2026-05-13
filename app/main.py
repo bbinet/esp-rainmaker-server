@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
@@ -15,7 +16,7 @@ from app.core.logging import configure_logging, get_logger
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     logger = get_logger(__name__)
     logger.info("application_starting", version=__version__, env=get_settings().env)
@@ -49,9 +50,11 @@ def create_app() -> FastAPI:
     app.include_router(v1_router)
 
     @app.exception_handler(RainmakerError)
-    async def rainmaker_handler(request: Any, exc: RainmakerError):
+    async def rainmaker_handler(request: Request, exc: RainmakerError) -> ORJSONResponse:
+        _ = request
         return ORJSONResponse(status_code=exc.status_code, content=exc.detail)
 
+    _ = Any  # imported for future handlers
     return app
 
 

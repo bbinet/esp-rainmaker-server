@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -65,7 +66,9 @@ class NodeGroup(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     mutually_exclusive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, default=dict, nullable=False
+    )
 
 
 class NodeGroupNode(Base):

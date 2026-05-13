@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,10 +20,10 @@ router = APIRouter(tags=["groups"])
 
 @router.post("/user/node_group")
 async def create_group(
-    payload: dict,
+    payload: dict[str, Any],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     name = payload.get("group_name")
     if not name:
         raise invalid_request("group_name required")
@@ -52,7 +53,7 @@ async def list_user_node_groups(
     group_id: str | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     gid = uuid.UUID(group_id) if group_id else None
     groups = await groups_service.list_groups(db, owner_id=user.id, group_id=gid)
     return {"groups": groups}

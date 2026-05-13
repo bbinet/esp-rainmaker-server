@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,9 +31,9 @@ async def list_user_nodes(
     node_details: bool = Query(default=False),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     node_ids = await access_service.accessible_node_ids(db, user_id=user.id)
-    response: dict = {"nodes": node_ids, "total": len(node_ids)}
+    response: dict[str, Any] = {"nodes": node_ids, "total": len(node_ids)}
     if node_details:
         details = []
         for nid in node_ids:
@@ -81,7 +83,7 @@ async def get_user_node_config(
     node_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     await access_service.require_access(db, user_id=user.id, node_id=node_id)
     cfg = (
         await db.execute(select(NodeConfig).where(NodeConfig.node_id == node_id))
@@ -100,7 +102,7 @@ async def get_user_node_status(
     node_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     await access_service.require_access(db, user_id=user.id, node_id=node_id)
     node = (await db.execute(select(Node).where(Node.node_id == node_id))).scalar_one_or_none()
     if node is None:
@@ -119,7 +121,7 @@ async def get_user_node_params(
     node_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     await access_service.require_access(db, user_id=user.id, node_id=node_id)
     shadow = (
         await db.execute(select(NodeParamsShadow).where(NodeParamsShadow.node_id == node_id))
@@ -129,7 +131,7 @@ async def get_user_node_params(
 
 @router.put("/user/nodes/params", response_model=SuccessResponse)
 async def put_user_node_params(
-    payload: dict,
+    payload: dict[str, Any],
     node_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -147,10 +149,10 @@ async def put_user_node_params(
 
 @router.put("/user/nodes/mapping")
 async def put_user_node_mapping(
-    payload: dict,
+    payload: dict[str, Any],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     node_id = payload.get("node_id")
     secret_key = payload.get("secret_key")
     operation = payload.get("operation", "add")
@@ -171,16 +173,16 @@ async def get_user_node_mapping(
     request_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     return await mapping_service.get_mapping_status(db, user_id=user.id, request_id=request_id)
 
 
 @router.post("/user/nodes/mapping/initiate")
 async def initiate_mapping(
-    payload: dict,
+    payload: dict[str, Any],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     node_id = payload.get("node_id")
     if not node_id:
         raise invalid_request("node_id required")
@@ -189,10 +191,10 @@ async def initiate_mapping(
 
 @router.post("/user/nodes/mapping/verify")
 async def verify_mapping(
-    payload: dict,
+    payload: dict[str, Any],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     request_id = payload.get("request_id")
     challenge_response = payload.get("challenge_response")
     if not request_id or not challenge_response:
@@ -209,13 +211,13 @@ async def verify_mapping(
 
 
 @router.get("/user/custom_data")
-async def get_custom_data(user: User = Depends(get_current_user)) -> dict:
+async def get_custom_data(user: User = Depends(get_current_user)) -> dict[str, Any]:
     return user.custom_data or {}
 
 
 @router.put("/user/custom_data", response_model=SuccessResponse)
 async def put_custom_data(
-    payload: dict,
+    payload: dict[str, Any],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse:

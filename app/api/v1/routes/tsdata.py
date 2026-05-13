@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +33,7 @@ async def get_tsdata(
     num_records: int = Query(default=200, le=200),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     await access_service.require_access(db, user_id=user.id, node_id=node_id)
     try:
         records = await tsdata_service.query_tsdata(
@@ -63,7 +64,7 @@ async def get_simple_tsdata(
     num_records: int = Query(default=200, le=200),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     return await get_tsdata(
         node_id=node_id,
         param=param,

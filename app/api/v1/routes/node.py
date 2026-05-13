@@ -5,6 +5,8 @@ Identified by ``X-SSL-Client-CN`` injected by the mTLS Ingress.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +23,7 @@ router = APIRouter(tags=["node"])
 
 @router.put("/node/config", response_model=SuccessResponse)
 async def put_node_config(
-    payload: dict,
+    payload: dict[str, Any],
     node: Node = Depends(get_node_from_mtls),
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse:
@@ -32,7 +34,7 @@ async def put_node_config(
 @router.post("/node/params/local", response_model=SuccessResponse)
 @router.put("/node/params/local", response_model=SuccessResponse)
 async def post_node_params_local(
-    payload: dict,
+    payload: dict[str, Any],
     node: Node = Depends(get_node_from_mtls),
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse:
@@ -44,13 +46,13 @@ async def post_node_params_local(
 async def get_node_otafetch(
     node: Node = Depends(get_node_from_mtls),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     return await ota_service.fetch_pending_for_node(db, node_id=node.node_id)
 
 
 @router.post("/node/otastatus", response_model=SuccessResponse)
 async def post_node_otastatus(
-    payload: dict,
+    payload: dict[str, Any],
     node: Node = Depends(get_node_from_mtls),
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse:

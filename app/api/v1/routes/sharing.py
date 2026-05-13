@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -21,10 +22,10 @@ router = APIRouter(tags=["sharing"])
 
 @router.put("/user/nodes/sharing/requests")
 async def put_sharing_request(
-    payload: dict,
+    payload: dict[str, Any],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     # Two shapes: owner-initiated (nodes + user_name) or invitee accept
     # (request_id + accept).
     if "request_id" in payload:
@@ -54,7 +55,7 @@ async def put_sharing_request(
 async def list_sharing(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     granted_to = (
         (await db.execute(select(NodeSharing).where(NodeSharing.to_user_id == user.id)))
         .scalars()

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,7 +86,7 @@ async def accept_or_decline(
     invitee_name: str,
     request_id: uuid.UUID,
     accept: bool,
-) -> dict:
+) -> dict[str, Any]:
     row = (
         await db.execute(select(NodeSharingRequest).where(NodeSharingRequest.id == request_id))
     ).scalar_one_or_none()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -22,7 +23,9 @@ class OtaImage(Base, TimestampMixin):
     file_sha256: Mapped[str | None] = mapped_column(String(128), nullable=True)
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="staged", nullable=False)
-    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, default=dict, nullable=False
+    )
 
 
 class OtaJob(Base, TimestampMixin):
@@ -34,7 +37,7 @@ class OtaJob(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
-    rollout_policy: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    rollout_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

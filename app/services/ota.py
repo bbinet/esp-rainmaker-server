@@ -99,7 +99,7 @@ async def create_job(
     name: str,
     ota_image_id: uuid.UUID,
     node_ids: list[str],
-    rollout_policy: dict | None = None,
+    rollout_policy: dict[str, Any] | None = None,
     created_by: uuid.UUID | None = None,
 ) -> OtaJob:
     image = (

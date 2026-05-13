@@ -48,7 +48,7 @@ class _MessageLike(Protocol):
 
 def _topic_str(topic_obj: Any) -> str:
     """aiomqtt yields a Topic object with `.value`; tests pass plain strings."""
-    return getattr(topic_obj, "value", topic_obj)
+    return getattr(topic_obj, "value", topic_obj)  # type: ignore[no-any-return]
 
 
 def _split_topic(topic: str) -> tuple[str, str] | None:
@@ -92,21 +92,21 @@ async def dispatch(db: AsyncSession, message: _MessageLike) -> None:
 # ---------------- Handlers ----------------
 
 
-async def _handle_config(db: AsyncSession, node_id: str, payload: dict) -> None:
+async def _handle_config(db: AsyncSession, node_id: str, payload: dict[str, Any]) -> None:
     if not isinstance(payload, dict):
         return
     await _ensure_node(db, node_id)
     await node_service.upsert_node_config(db, node_id=node_id, payload=payload)
 
 
-async def _handle_params_local(db: AsyncSession, node_id: str, payload: dict) -> None:
+async def _handle_params_local(db: AsyncSession, node_id: str, payload: dict[str, Any]) -> None:
     if not isinstance(payload, dict):
         return
     await _ensure_node(db, node_id)
     await node_service.upsert_params_shadow(db, node_id=node_id, params=payload)
 
 
-async def _handle_user_mapping(db: AsyncSession, node_id: str, payload: dict) -> None:
+async def _handle_user_mapping(db: AsyncSession, node_id: str, payload: dict[str, Any]) -> None:
     """Match a `node/<id>/user/mapping` PUBLISH against pending challenges.
 
     The device echoes back `{node_id, user_id, secret_key, reset}`. We
@@ -166,12 +166,12 @@ async def _handle_user_mapping(db: AsyncSession, node_id: str, payload: dict) ->
     await db.commit()
 
 
-async def _handle_otastatus(db: AsyncSession, node_id: str, payload: dict) -> None:
+async def _handle_otastatus(db: AsyncSession, node_id: str, payload: dict[str, Any]) -> None:
     """Phase 6 will wire job status updates. For now: no-op."""
     _ = (db, node_id, payload)
 
 
-async def _handle_tsdata(db: AsyncSession, node_id: str, payload: dict) -> None:
+async def _handle_tsdata(db: AsyncSession, node_id: str, payload: dict[str, Any]) -> None:
     """Bulk ts_data form: { ts_data: [{name, dt, records: [{t, v}, ...]}, ...] }."""
     if not isinstance(payload, dict):
         return
@@ -187,7 +187,7 @@ async def _handle_tsdata(db: AsyncSession, node_id: str, payload: dict) -> None:
         device_name, param_name = full_name.split(".", 1)
         dt = entry.get("dt", "int")
         records = entry.get("records") or []
-        points: list = []
+        points: list[Any] = []
         for r in records:
             try:
                 ts = datetime.fromtimestamp(int(r["t"]), tz=UTC)
@@ -205,7 +205,7 @@ async def _handle_tsdata(db: AsyncSession, node_id: str, payload: dict) -> None:
             )
 
 
-async def _handle_simple_tsdata(db: AsyncSession, node_id: str, payload: dict) -> None:
+async def _handle_simple_tsdata(db: AsyncSession, node_id: str, payload: dict[str, Any]) -> None:
     """Simple form: { name, dt, t, v }."""
     if not isinstance(payload, dict):
         return
@@ -231,7 +231,7 @@ async def _handle_simple_tsdata(db: AsyncSession, node_id: str, payload: dict) -
     )
 
 
-async def _handle_alert(db: AsyncSession, node_id: str, payload: dict) -> None:
+async def _handle_alert(db: AsyncSession, node_id: str, payload: dict[str, Any]) -> None:
     """Phase 9 (push) will fan-out alerts. For now: no-op."""
     _ = (db, node_id, payload)
 

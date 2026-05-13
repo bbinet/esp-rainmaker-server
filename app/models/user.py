@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
@@ -35,7 +35,7 @@ class User(Base, TimestampMixin):
     is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    custom_data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    custom_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
     confirm_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     confirm_code_exp: Mapped[datetime | None] = mapped_column(

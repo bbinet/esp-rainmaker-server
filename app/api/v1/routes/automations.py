@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,10 +20,10 @@ router = APIRouter(tags=["automations"])
 
 @router.post("/user/node_automation")
 async def create_automation(
-    payload: dict,
+    payload: dict[str, Any],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     name = payload.get("name")
     if not name:
         raise invalid_request("name required")
@@ -42,14 +43,14 @@ async def create_automation(
 async def list_automations(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     rows = await automations_service.list_automations(db, user_id=user.id)
     return {"automations": [automations_service.serialise(r) for r in rows]}
 
 
 @router.put("/user/node_automation", response_model=SuccessResponse)
 async def update_automation(
-    payload: dict,
+    payload: dict[str, Any],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse:

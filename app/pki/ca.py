@@ -23,7 +23,7 @@ from pathlib import Path
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from app.core.config import get_settings
 
@@ -177,7 +177,7 @@ def sign_device_csr(
             critical=True,
         )
         .add_extension(
-            x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.CLIENT_AUTH]),
+            x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH]),
             critical=False,
         )
         .add_extension(

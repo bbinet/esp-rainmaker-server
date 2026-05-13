@@ -9,6 +9,8 @@ VerneMQ actually talks to via the cluster-internal Service.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +23,9 @@ _logger = get_logger(__name__)
 
 
 @router.post("/auth/on_register")
-async def on_register(payload: dict, db: AsyncSession = Depends(get_db)) -> dict:
+async def on_register(
+    payload: dict[str, Any], db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     result = await authz_service.authorise_register(db, username=payload.get("username"))
     _logger.info(
         "vmq_authz_on_register",
@@ -33,7 +37,7 @@ async def on_register(payload: dict, db: AsyncSession = Depends(get_db)) -> dict
 
 
 @router.post("/auth/on_publish")
-async def on_publish(payload: dict) -> dict:
+async def on_publish(payload: dict[str, Any]) -> dict[str, Any]:
     result = await authz_service.authorise_publish(
         username=payload.get("username"),
         topic=payload.get("topic", ""),
@@ -49,7 +53,7 @@ async def on_publish(payload: dict) -> dict:
 
 
 @router.post("/auth/on_subscribe")
-async def on_subscribe(payload: dict) -> dict:
+async def on_subscribe(payload: dict[str, Any]) -> dict[str, Any]:
     result = await authz_service.authorise_subscribe(
         username=payload.get("username"),
         topics=payload.get("topics"),
@@ -64,7 +68,9 @@ async def on_subscribe(payload: dict) -> dict:
 
 
 @router.post("/on_client_online")
-async def on_client_online(payload: dict, db: AsyncSession = Depends(get_db)) -> dict:
+async def on_client_online(
+    payload: dict[str, Any], db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     await authz_service.mark_online(
         db,
         client_id=payload.get("client_id"),
@@ -74,7 +80,9 @@ async def on_client_online(payload: dict, db: AsyncSession = Depends(get_db)) ->
 
 
 @router.post("/on_client_offline")
-async def on_client_offline(payload: dict, db: AsyncSession = Depends(get_db)) -> dict:
+async def on_client_offline(
+    payload: dict[str, Any], db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     await authz_service.mark_offline(
         db,
         client_id=payload.get("client_id"),
