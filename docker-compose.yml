@@ -153,6 +153,14 @@ services:
       <<: *app-env
     expose:
       - "8001"
+    # The Dockerfile's HEALTHCHECK probes :8000 (api). vmq-authz
+    # listens on :8001, so override it here.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
     user: "1000:1000"
@@ -168,6 +176,15 @@ services:
     command: ["python", "-m", "app.entrypoints.mqtt_ingestor"]
     environment:
       <<: *app-env
+    # No HTTP surface; minimal liveness check so `compose up --wait`
+    # has something to gate on. The container is "alive" iff Python
+    # is still running — if the entrypoint died, Python is gone.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
     user: "1000:1000"
@@ -183,6 +200,15 @@ services:
     command: ["python", "-m", "app.entrypoints.worker"]
     environment:
       <<: *app-env
+    # No HTTP surface; minimal liveness check so `compose up --wait`
+    # has something to gate on (`disable: true` makes `--wait` error
+    # out with "has no healthcheck configured").
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
     user: "1000:1000"

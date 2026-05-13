@@ -67,3 +67,127 @@ jobs:
           push: false
           load: true
           tags: rainmaker-server:ci
+
+  # Spin the full compose stack on the host runner, init Garage, then
+  # execute the same scenarios that scripts/live_verify*.sh validate
+  # locally: Tests #2/#7/#9 (security negative, sharing, automations)
+  # and the prod-like path (NGINX mTLS Ingress + scale + read-only fs).
+  # Total: 34 cases (21 + 13) covering the boundaries unit tests can't.
+  live-verify:
+    runs-on: ubuntu-latest
+    needs: lint-type-unit
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python deps
+        # `make install` creates .venv/ + installs the editable package + dev
+        # extras. Both live_verify*.sh and gen_pki.py expect .venv/bin/python.
+        run: make install
+
+      - name: Bootstrap compose stack (PKI + compose-up --wait + Garage init + /etc/hosts)
+        run: make compose-stack
+        # Re-up api with the real Garage S3 backend so OTA tests don't fall
+        # back to the in-memory stub. Garage credentials were written by
+        # `make compose-stack` to var/garage-credentials.env.
+
+      - name: Re-up api with real S3 backend
+        run: |
+          cp var/garage-credentials.env .env
+          {
+            echo "RM_FEATURE_S3_REAL=true"
+            echo "RM_MINIO_PUBLIC_ENDPOINT=localhost:3900"
+            echo "RM_MINIO_PUBLIC_SECURE=false"
+          } >> .env
+          docker compose --env-file .env up -d api
+
+      - name: Wait for NGINX → api round-trip
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf --cacert var/pki/ca-chain.pem \
+                 --resolve api.local:443:127.0.0.1 \
+                 https://api.local/healthz >/dev/null; then
+              echo "api ready behind NGINX"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::api did not become reachable via NGINX within 60s"
+          exit 1
+
+      - name: live_verify scripts — 21 + 13 cases
+        run: make test-live
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          echo "::group::docker compose ps"
+          docker compose ps
+          echo "::endgroup::"
+
+          echo "::group::filesystem — var/pki/ + var/devices/"
+          ls -la var/pki/ 2>/dev/null || echo "(no var/pki)"
+          echo "--- devices:"
+          ls -la var/devices/ 2>/dev/null || echo "(no var/devices)"
+          for d in var/devices/*/; do
+            [[ -d "$d" ]] && { echo "$d:"; ls -la "$d"; }
+          done
+          echo "::endgroup::"
+
+          echo "::group::node_certificates DB state"
+          docker compose exec -T postgres psql -U rainmaker -c \
+            "SELECT node_id, substring(serial, 1, 16) AS serial_prefix, revoked, created_at FROM node_certificates ORDER BY created_at;" \
+            2>&1 || true
+          echo "::endgroup::"
+
+          echo "::group::vmq-authz — grep auth_on_register + on_publish + on_subscribe + decisions"
+          docker compose logs --no-color --timestamps vmq-authz 2>&1 \
+            | grep -E "auth_on_(register|publish|subscribe)|on_client_offline|refused|revoked|denied|outside namespace|status_code|HTTP/" \
+            | tail -200 || true
+          echo "::endgroup::"
+
+          echo "::group::vmq-authz — FULL log (last 500 lines)"
+          docker compose logs --no-color --timestamps vmq-authz 2>&1 | tail -500 || true
+          echo "::endgroup::"
+
+          echo "::group::vernemq — TLS/cert events"
+          docker compose logs --no-color --timestamps vernemq 2>&1 \
+            | grep -E "ssl|tls|cert|webhook|auth|disconnect|register|connect" -i \
+            | tail -200 || true
+          echo "::endgroup::"
+
+          # ----- A. Surface SQL errors emitted by Postgres -----
+          # Catches typos in psql/raw-text() queries (e.g. wrong column name)
+          # that wouldn't fail loudly otherwise. The `issued_at` typo in this
+          # very step was caught by this pattern.
+          echo "::group::postgres — SQL errors (ERROR/FATAL/WARNING)"
+          docker compose logs --no-color --timestamps postgres 2>&1 \
+            | grep -iE "ERROR|FATAL|WARNING" \
+            | grep -viE "WARNING: *no usable system locales" \
+            | tail -100 || echo "(no errors)"
+          echo "::endgroup::"
+
+          # ----- B. Surface Python exceptions across all 4 app services -----
+          # `grep -B 1 -A 10` gives the Traceback frame + caller context.
+          for svc in api vmq-authz mqtt-ingestor worker; do
+            echo "::group::$svc — Python exceptions"
+            docker compose logs --no-color --timestamps "$svc" 2>&1 \
+              | grep -E "Traceback|Error|Exception|CRITICAL" -B 1 -A 10 \
+              | tail -150 || echo "(no exceptions)"
+            echo "::endgroup::"
+          done
+
+          for svc in nginx api mqtt-ingestor worker postgres garage; do
+            echo "::group::$svc logs (tail 200)"
+            docker compose logs --no-color --timestamps "$svc" 2>&1 | tail -200 || true
+            echo "::endgroup::"
+          done
+
+      - name: Tear down
+        if: always()
+        run: make compose-down
