@@ -176,10 +176,15 @@ services:
     command: ["python", "-m", "app.entrypoints.mqtt_ingestor"]
     environment:
       <<: *app-env
-    # No HTTP surface; disable the inherited Dockerfile HEALTHCHECK so
-    # `compose up --wait` doesn't loop forever on this container.
+    # No HTTP surface; minimal liveness check so `compose up --wait`
+    # has something to gate on. The container is "alive" iff Python
+    # is still running — if the entrypoint died, Python is gone.
     healthcheck:
-      disable: true
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
     user: "1000:1000"
@@ -195,10 +200,15 @@ services:
     command: ["python", "-m", "app.entrypoints.worker"]
     environment:
       <<: *app-env
-    # No HTTP surface; disable the inherited Dockerfile HEALTHCHECK so
-    # `compose up --wait` doesn't loop forever on this container.
+    # No HTTP surface; minimal liveness check so `compose up --wait`
+    # has something to gate on (`disable: true` makes `--wait` error
+    # out with "has no healthcheck configured").
     healthcheck:
-      disable: true
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
     user: "1000:1000"
