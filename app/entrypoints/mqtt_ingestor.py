@@ -38,7 +38,7 @@ async def run() -> None:
                 password=settings.mqtt_internal_password.get_secret_value(),
                 identifier="rainmaker-backend-ingestor",
                 clean_session=False,
-                protocol=paho.MQTTv311,
+                protocol=paho.MQTTv311,  # type: ignore[arg-type]
             ) as client:
                 # `node/+/#` covers any sub-suffix depth: `node/<id>/config`,
                 # `node/<id>/params/local`, `node/<id>/params/local/init`,

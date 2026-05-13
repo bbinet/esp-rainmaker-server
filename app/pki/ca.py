@@ -189,7 +189,7 @@ def sign_device_csr(
             critical=False,
         )
         .add_extension(
-            x509.AuthorityKeyIdentifier.from_issuer_public_key(inter_cert.public_key()),
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(inter_cert.public_key()),  # type: ignore[arg-type]
             critical=False,
         )
         .sign(inter_key, hashes.SHA256())

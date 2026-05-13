@@ -116,8 +116,9 @@ class MinioS3Storage:
     async def signed_upload_url(
         self, *, bucket: str, key: str, content_type: str, expires_in: int = 600
     ) -> str:
-        import anyio
         from datetime import timedelta
+
+        import anyio
 
         def _run() -> str:
             return self._public_client.presigned_put_object(
@@ -128,8 +129,9 @@ class MinioS3Storage:
         return await anyio.to_thread.run_sync(_run)
 
     async def signed_download_url(self, *, bucket: str, key: str, expires_in: int = 600) -> str:
-        import anyio
         from datetime import timedelta
+
+        import anyio
 
         def _run() -> str:
             return self._public_client.presigned_get_object(

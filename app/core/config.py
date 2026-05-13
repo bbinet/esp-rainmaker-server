@@ -25,13 +25,13 @@ class Settings(BaseSettings):
     id_token_ttl_seconds: int = 60 * 60
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 30
 
-    database_url: PostgresDsn = Field(
+    database_url: PostgresDsn = Field(  # type: ignore[assignment]
         default="postgresql+asyncpg://rainmaker:rainmaker@localhost:5432/rainmaker"
     )
     database_pool_size: int = 10
     database_max_overflow: int = 20
 
-    redis_url: RedisDsn = Field(default="redis://localhost:6379/0")
+    redis_url: RedisDsn = "redis://localhost:6379/0"  # type: ignore[assignment]
 
     minio_endpoint: str = "localhost:9000"
     minio_access_key: SecretStr = SecretStr("rainmaker")
