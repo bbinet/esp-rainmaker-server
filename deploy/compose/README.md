@@ -37,29 +37,33 @@ Both stacks expose the same architecture:
 
 ## Dev quickstart
 
+**TL;DR — one command from a fresh checkout:**
+
 ```bash
-# 1. Generate test PKI artifacts
-python scripts/gen_pki.py
+make e2e            # = compose-stack + test-live
+                    # PKI → compose up --wait → init_garage → /etc/hosts
+                    #   → live_verify.sh (21) + live_verify_prod_like.sh (13)
+```
 
-# 2. Bring up the stack
-# The 5 third-party images are pulled from ghcr.io/bbinet/ (mirrored
-# by .github/workflows/mirror.yml) to avoid Docker Hub rate-limits.
-# To pin a different source, set RM_IMAGE_<NAME> (see docker-compose.yml).
-docker compose up -d --build
+**Step-by-step equivalent** (useful when debugging or pointing at a non-dev
+deployment):
 
-# 3. Initialise Garage (one-shot)
-bash scripts/init_garage.sh
+```bash
+# 1. Bootstrap: dev PKI + stack + Garage init + /etc/hosts (idempotent)
+make compose-stack
+# Third-party images come from ghcr.io/bbinet/esp-rainmaker-server/*
+# (mirrored by .github/workflows/mirror.yml) — no Docker Hub rate-limit.
+# Override individual images with RM_IMAGE_<NAME>; see docker-compose.yml.
 
-# 4. Tell `api` to use the real S3 backend
+# 2. Tell `api` to use the real S3 backend (Garage creds were written by
+#    init_garage.sh to var/garage-credentials.env)
 cat var/garage-credentials.env >> .env
 echo "RM_FEATURE_S3_REAL=true" >> .env
 echo "RM_MINIO_PUBLIC_ENDPOINT=localhost:3900" >> .env
 docker compose --env-file .env up -d api
 
-# 5. Smoke-test
-echo "127.0.0.1 api.local claim.local node.local" | sudo tee -a /etc/hosts
-bash scripts/live_verify.sh             # → 21/21
-bash scripts/live_verify_prod_like.sh   # → 13/13
+# 3. Smoke-test the 34 live cases
+make test-live      # = live_verify.sh (21) + live_verify_prod_like.sh (13)
 ```
 
 Endpoints in dev:
