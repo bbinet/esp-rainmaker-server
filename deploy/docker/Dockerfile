@@ -1,6 +1,9 @@
 ARG PYTHON_VERSION=3.11
 
-FROM python:${PYTHON_VERSION}-slim AS builder
+# Pin to Debian Trixie (Debian 13) for a current, predictable libc /
+# OpenSSL / CA-certificates baseline. `python:3.11-slim-trixie` is the
+# official Python image variant on Trixie.
+FROM python:${PYTHON_VERSION}-slim-trixie AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -17,7 +20,7 @@ RUN pip wheel --wheel-dir /wheels --no-deps .  \
  && pip download --dest /wheels .
 
 
-FROM python:${PYTHON_VERSION}-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim-trixie AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

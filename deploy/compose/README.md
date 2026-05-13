@@ -42,6 +42,9 @@ Both stacks expose the same architecture:
 python scripts/gen_pki.py
 
 # 2. Bring up the stack
+# The 5 third-party images are pulled from ghcr.io/bbinet/ (mirrored
+# by .github/workflows/mirror.yml) to avoid Docker Hub rate-limits.
+# To pin a different source, set RM_IMAGE_<NAME> (see docker-compose.yml).
 docker compose up -d --build
 
 # 3. Initialise Garage (one-shot)

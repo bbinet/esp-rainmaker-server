@@ -35,7 +35,9 @@ x-app-env: &app-env
 
 services:
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    # Mirrored from timescale/timescaledb:latest-pg16 — see
+    # .github/workflows/mirror.yml. Set RM_IMAGE_TIMESCALEDB to override.
+    image: ${RM_IMAGE_TIMESCALEDB:-ghcr.io/bbinet/timescaledb:pg16}
     environment:
       POSTGRES_USER: rainmaker
       POSTGRES_PASSWORD: rainmaker
@@ -51,7 +53,7 @@ services:
       retries: 10
 
   garage:
-    image: dxflrs/garage:v1.0.1
+    image: ${RM_IMAGE_GARAGE:-ghcr.io/bbinet/garage:v1.0.1}
     volumes:
       - garage_data:/var/lib/garage/data
       - garage_meta:/var/lib/garage/meta
@@ -62,7 +64,7 @@ services:
       - "3903:3903"
 
   vernemq:
-    image: vernemq/vernemq:2.0.1
+    image: ${RM_IMAGE_VERNEMQ:-ghcr.io/bbinet/vernemq:2.0.1}
     environment:
       DOCKER_VERNEMQ_ACCEPT_EULA: "yes"
       DOCKER_VERNEMQ_ALLOW_ANONYMOUS: "off"
@@ -106,7 +108,7 @@ services:
       - vmq-authz
 
   smtp4dev:
-    image: rnwood/smtp4dev:v3
+    image: ${RM_IMAGE_SMTP4DEV:-ghcr.io/bbinet/smtp4dev:v3}
     ports:
       - "5025:25"
       - "5080:80"
@@ -198,7 +200,7 @@ services:
   # only on `node.*`). Compose-side we get the same shape: one NGINX
   # process listening on three ports with the per-host configs.
   nginx:
-    image: nginx:1.27-alpine
+    image: ${RM_IMAGE_NGINX:-ghcr.io/bbinet/nginx:1.27-alpine}
     ports:
       - "443:443"    # api.local
       - "444:444"    # claim.local

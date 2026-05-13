@@ -1,0 +1,85 @@
+name: mirror-third-party-images
+
+# Mirrors the third-party container images we depend on from Docker Hub
+# to ghcr.io, so that:
+#   1. We can run `docker compose up` without hitting Docker Hub's
+#      anonymous pull rate-limit (100 pulls / 6h per IP).
+#   2. The exact digests we test against are pinned in our own registry
+#      and survive upstream tag mutations or repository deletions.
+#
+# Runs weekly (Monday 03:00 UTC) and on manual trigger. Re-pulling the
+# same tag is cheap: only changed layers are pushed.
+#
+# Image map (Docker Hub source → ghcr.io destination):
+#   timescale/timescaledb:latest-pg16  →  ghcr.io/bbinet/timescaledb:pg16
+#   dxflrs/garage:v1.0.1               →  ghcr.io/bbinet/garage:v1.0.1
+#   vernemq/vernemq:2.0.1              →  ghcr.io/bbinet/vernemq:2.0.1
+#   rnwood/smtp4dev:v3                 →  ghcr.io/bbinet/smtp4dev:v3
+#   nginx:1.27-alpine                  →  ghcr.io/bbinet/nginx:1.27-alpine
+#   prodrigestivill/postgres-backup-local:16
+#                                      →  ghcr.io/bbinet/postgres-backup-local:16
+#   alpine:3.20                        →  ghcr.io/bbinet/alpine:3.20
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - src: "timescale/timescaledb:latest-pg16"
+            dst: "timescaledb:pg16"
+          - src: "dxflrs/garage:v1.0.1"
+            dst: "garage:v1.0.1"
+          - src: "vernemq/vernemq:2.0.1"
+            dst: "vernemq:2.0.1"
+          - src: "rnwood/smtp4dev:v3"
+            dst: "smtp4dev:v3"
+          - src: "nginx:1.27-alpine"
+            dst: "nginx:1.27-alpine"
+          - src: "prodrigestivill/postgres-backup-local:16"
+            dst: "postgres-backup-local:16"
+          - src: "alpine:3.20"
+            dst: "alpine:3.20"
+    steps:
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Authenticated Docker Hub pull doubles the rate-limit (100 → 200
+      # /6h). Optional but recommended; without it the workflow still
+      # works.
+      - name: Login to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and push (preserve all platforms)
+        env:
+          SRC: ${{ matrix.image.src }}
+          DST: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.dst }}
+        run: |
+          set -euo pipefail
+          echo "Mirroring $SRC -> $DST"
+          # `docker buildx imagetools create` preserves the manifest
+          # list (multi-arch) and the digests, so consumers pulling
+          # arm64 vs amd64 get the right layer.
+          docker buildx imagetools create --tag "$DST" "$SRC"
+          docker buildx imagetools inspect "$DST" | head -20
