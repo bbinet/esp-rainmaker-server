@@ -107,7 +107,9 @@ async def _truncate_tables(migrated_db: str) -> AsyncIterator[None]:
     async with engine.begin() as conn:
         await conn.execute(
             text(
-                "TRUNCATE TABLE ota_job_nodes, ota_jobs, ota_images, "
+                "TRUNCATE TABLE node_group_nodes, node_groups, "
+                "node_sharing_requests, node_sharing, "
+                "ota_job_nodes, ota_jobs, ota_images, "
                 "claim_challenges, device_provisioning, "
                 "mapping_challenges, user_node_mappings, "
                 "node_attributes, node_params_shadow, node_configs, "

@@ -13,5 +13,11 @@ from app.models.node import (  # noqa: F401
     NodeParamsShadow,
 )
 from app.models.ota import OtaImage, OtaJob, OtaJobNode  # noqa: F401
+from app.models.sharing import (  # noqa: F401
+    NodeGroup,
+    NodeGroupNode,
+    NodeSharing,
+    NodeSharingRequest,
+)
 from app.models.user import RefreshToken, User  # noqa: F401
 from app.models.user_node import MappingChallenge, UserNodeMapping  # noqa: F401

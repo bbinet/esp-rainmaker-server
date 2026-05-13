@@ -30,16 +30,7 @@ async def list_user_nodes(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    mapping_rows = (
-        (
-            await db.execute(
-                select(UserNodeMapping.node_id).where(UserNodeMapping.user_id == user.id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    node_ids = list(mapping_rows)
+    node_ids = await access_service.accessible_node_ids(db, user_id=user.id)
     response: dict = {"nodes": node_ids, "total": len(node_ids)}
     if node_details:
         details = []
