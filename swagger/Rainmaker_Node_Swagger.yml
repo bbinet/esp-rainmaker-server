@@ -1,0 +1,875 @@
+openapi: 3.0.0
+info:
+  description: The API Defintions for the Rainmaker APIs, which are used by nodes.
+  version: 1.0.0-49fdae4_2021-03-02T08:20
+  title: ESP RainMaker API Definitions for Nodes
+  termsOfService: https://rainmaker.espressif.com/docs/terms-of-use
+  contact:
+    email: esp-rainmaker-admin@espressif.com
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+
+tags:
+  - name: OTA Service
+    description: APIs to fetch and manage OTA jobs
+paths:
+  /{version}/node/otafetch:
+    get:
+      tags:
+        - OTA Service
+      summary: Fetch the latest OTA job for a node
+      description: "Requires MutualTLS based authentication using the node certificate and key"
+      operationId: nodeotafetch
+      parameters:
+        - name: version
+          in: path
+          description: API Version (Current supported API Version is 'v1')
+          required: true
+          schema:
+            type: string
+            default: 'v1'
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtaFetchResponse"
+        "400":
+          description:
+            <br>Error Codes and Error Description
+            <br>100009 - Node Id is missing
+            <br>100015 - Nodes do not exist
+            <br>100023 - User does not exist
+            <br>105012 - OTA job not found
+            <br>104015 - OTA image not found
+            <br>105061 - No latest OTA available for the node
+            <br>100049 - Error, node_id not found in the provided node certificate
+            <br>105076 - NetworkID unreported by node. Latest Job is network serialised. Cannot proceed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+        "500":
+          description:
+            <br>Error Codes and Error Description
+            <br>105019 - Error occurred while fetching latest OTA update
+            <br>100014 - Getting node details failed
+            <br>104006 - Error occurred while fetching OTA image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+
+  /{version}/node/config:
+    put:
+      tags:
+        - Node Configuration
+      summary: Update node configuration
+      description: "Update configuration settings for a node. Requires MutualTLS based authentication using the node certificate and key"
+      operationId: updateNodeConfig
+      parameters:
+        - name: version
+          in: path
+          description: API Version (Current supported API Version is 'v1')
+          required: true
+          schema:
+            type: string
+            default: 'v1'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeConfigRequest"
+        required: true
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APISuccessResponse"
+        "400":
+          description: 
+            <br>Error Codes and Error Description
+            <br>100006 - Invalid request body
+            <br>100009 - Node Id is missing
+            <br>100015 - Nodes do not exist
+            <br>100049 - Error, node_id not found in the provided node certificate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+        "500":
+          description: 
+            <br>Error Codes and Error Description
+            <br>100079 - Error sending message to queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+
+  /{version}/node/params/local:  
+    put:
+      tags:
+        - Node set device shadow
+      summary: Update device shadow parameters
+      description: "Update device shadow parameters for a node. Requires MutualTLS based authentication using the node certificate and key"
+      operationId: updateDeviceShadow
+      parameters:
+        - name: version
+          in: path
+          description: API Version (Current supported API Version is 'v1')
+          required: true
+          schema:
+            type: string
+            default: 'v1'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeLocalControlRequest"
+        required: true
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APISuccessResponse"
+        "400":
+          description: 
+            <br>Error Codes and Error Description
+            <br>100006 - Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+        "500":
+          description: 
+            <br>Error Codes and Error Description
+            <br>100079 - Error sending message to queue  
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+    
+    post:
+      tags:
+        - Node set device shadow
+      summary: Create device shadow parameters
+      description: "Create device shadow parameters for a node. Requires MutualTLS based authentication using the node certificate and key"
+      operationId: createDeviceShadow
+      parameters:
+        - name: version
+          in: path
+          description: API Version (Current supported API Version is 'v1')
+          required: true
+          schema:
+            type: string
+            default: 'v1'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeLocalControlRequest"
+        required: true
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APISuccessResponse"
+        "400":
+          description: 
+            <br>Error Codes and Error Description
+            <br>100006 - Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+        "500":
+          description: 
+            <br>Error Codes and Error Description
+            <br>100079 - Error sending message to queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+
+  /{version}/node/otastatus:
+    post:
+      tags:
+        - OTA Service
+      summary: Update the OTA job status
+      description: "Requires MutualTLS based authentication using the node certificate and key"
+      operationId: nodeotastatus
+      parameters:
+        - name: version
+          in: path
+          description: API Version (Current supported API Version is 'v1')
+          required: true
+          schema:
+            type: string
+            default: 'v1'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtaStatusUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtaFetchResponse"
+        "400":
+          description: "
+            <br>Error Codes and Error Description 
+            <br>100006 - Invalid request body
+            <br>105007 - Failed to save OTA node status
+            <br>100009 - Node Id is missing
+            <br>100015 - Nodes do not exist
+            <br>100023 - User does not exist
+            <br>105014 - OTA Job Id is missing
+            <br>105012 - OTA job not found
+            <br>105015 - Either Job is cancelled/expired or Job does not exists
+            <br>100049 - Error, node_id not found in the provided node certificate
+            <br>105051 - Error, the OTA job is finished for the node
+            "
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+        "500":
+          description: 
+            <br>Error Codes and Error Description
+            <br>100014 - Getting node details failed
+            <br>105004 - Error occurred while fetching OTA job info
+            <br>105007 - Failed to save OTA node status
+            <br>105008 - Failed to save latest OTA node status
+            <br>105013 - Error occurred while fetching node OTA status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+
+  /{version}/node/file/upload_request:
+    get:
+      parameters:
+        - name: version
+          in: path
+          description: API Version (Current supported API Version is 'v1')
+          required: true
+          schema:
+            type: string
+            default: 'v1'
+      tags:
+        -  Command Response Communication
+      summary: Get the Command Response Request Details
+      description: "Get the file upload url and details of the command response requestId."
+      operationId: getUserCmdResponseRequests
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeFileUploadGetRequest'
+              examples:
+                Response Data:
+                  $ref: '#/components/examples/NodeFileUploadGetResponseJSON'
+        "400":
+          description: failure<br>Error Codes And Error Description
+            <br>100002 - API Version is not supported
+            <br>131004 - Invalid Request Id or Node Id or the Request is not marked for user
+            <br>131005 - Error, the status for requestId is not in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CmdResponseError'
+        "500":
+          description: failure<br>Error Codes and Error Description
+            <br>100001 - Error in fetching user details
+            <br>131002 - Error occurred retrieving Command Response Requests
+            <br>131010 - Error fetching request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CmdResponseError'
+      security:
+        - RequestId: []
+
+  /{version}/node/file/upload_confirm:        
+    post:
+      tags:
+        -  Command Response Communication
+      summary: Confirm Command Response Request
+      description: "Used to confirm file upload for command response request."
+      operationId: postUserCmdResponseRequests
+      parameters:
+        - name: version
+          in: path
+          description: API Version (Current supported API Version is 'v1')
+          required: true
+          schema:
+            type: string
+            default: 'v1'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeFileUploadPostRequest'
+        description: Add a request to Command Response
+        required: true
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeFileUploadPostResponse'
+        "400":
+          description: failure<br>Error Codes and Error Description
+            <br>100002 - API Version is not supported
+            <br>100006 - Invalid request body
+            <br>131004 - Invalid Request Id or Node Id or the Request is not marked for user
+            <br>131005 - Error, the status for requestId is not in progress
+            <br>131008 - Missing node_ids or more than one node_ids provided
+            <br>131009 - Missing or invalid command
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CmdResponseError'
+        "500":
+          description: failure<br>Error Codes and Error Description
+            <br>131101 - Internal Server Error
+            <br>131009 - Error updating request
+            <br>131010 - Error fetching request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CmdResponseError'
+      security:
+        - RequestId: []
+
+  /{version}/node/cmd_resp:
+    post:
+      tags:
+        - HTTP Command Response
+      summary: Update the HTTP Command Response
+      description: "Requires MutualTLS based authentication using the node certificate and key"
+      operationId: nodehttpcmdresp
+      parameters:
+        - name: version
+          in: path
+          description: API Version (Current supported API Version is 'v1')
+          required: true
+          schema:
+            type: string
+            default: 'v1'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HttpCmdRespRequest"
+        required: true
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HttpCmdRespResponse"
+        "400":
+          description: 
+            <br>Error Codes and Error Description 
+            <br>131004 - Invalid Request Id or Node Id or the Request is not marked for user
+            <br>131005 - Error, the status for requestId is not in progress
+            <br>131008 - Missing node_ids or more than one node_ids provided
+            <br>131009 - Missing or invalid command
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+        "500":
+          description: 
+            <br>Error Codes and Error Description
+            <br>131002 - Error occurred retrieving Command Response Requests
+            <br>131009 - Error updating request            
+            <br>131010 - Error fetching request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+
+externalDocs:
+  description: Find out more about ESP RainMaker
+  url: https://rainmaker.espressif.com/
+
+servers:
+  - url: https://{APIUrl}
+    variables:
+      APIUrl:
+        default: api.node.rainmaker.espressif.com
+        description: Base Url to API
+
+components:
+  securitySchemes:
+    RequestId:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Token from device file upload     
+  schemas:
+    APIFailureResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "failure"
+        description:
+          type: string
+          example: "Failure description"
+
+    APISuccessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        description:
+          type: string
+          example: "Success description"
+
+    OtaFetchResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          example: "https://presigned-url.s3.amazonaws.com/firmware.bin"
+        file_md5:
+          type: string
+          example: "5d41402abc4b2a76b9719d911017c592"
+        fw_version:
+          type: string
+          example: "1.0.0"
+        ota_job_id:
+          type: string
+          example: <ota-job-id>
+        file_size:
+          type: number
+          example: 2097152
+        metadata:
+          type: object
+          description: "Additional metadata for the OTA job"
+        stream_id:
+          type: string
+          example: <stream-id>
+        ota_available:
+          type: boolean
+          example: true
+          description: "Indicates if OTA is available (only set in wait response)"
+        action:
+          type: string
+          example: "wait"
+          description: "Action to be performed by device (only set in wait response)"
+        ota_task:
+          type: integer
+          format: int64
+          description: "OTA task duration in seconds"
+        min_wait:
+          type: integer
+          format: int64
+          description: "Minimum wait time in seconds (only set in wait response)"
+        max_wait:
+          type: integer
+          format: int64
+          description: "Maximum wait time in seconds (only set in wait response)"
+
+    OtaStatusUpdateRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "in-progress"
+        ota_job_id:
+          type: string
+          example: <ota-job-id>
+        additional_info:
+          type: string
+          example: "The OTA is in progress"
+        ts:
+          type: integer
+          example: 1648147200
+          description: Timestamp of the OTA status in seconds. If empty, the time at which the Cloud receives the message is used.
+        network_id:
+          type: string
+          example: "network-123456"
+          description: For Thread based OTA, Network ID of the node
+      required:
+        - status
+        - ota_job_id
+
+    NodeFileUploadGetRequest:
+      type: object
+      properties:
+        requests:
+          type: array
+          items:
+            type: object
+            properties:
+              request_id:
+                type: string
+                example: "<short uuid> Ex: 6jyMKuFuAq3gLnmStTKyBQ"
+              status:
+                type: string
+                example: "in_progress"
+              request_data:
+                type: object
+                properties:
+                  file_id:
+                    type: string
+                    example: "<short uuid>"
+                  timeout:
+                    type: number
+                    example: 3600
+                  url:
+                    type: string
+                    example: "url"
+              for_user:
+                type: boolean
+                example: true
+              node_id:
+                type: string
+                example: 6jyMKuFuAq3gLnmStTKyBQ
+              request_timestamp:
+                type: number
+                example: 1234567890
+              expiration_timestamp:
+                type: number
+                example: 1234567890
+
+    NodeFileUploadPostRequest:
+      type: object
+      properties:
+        node_ids:
+          type: array
+          minItems: 1
+          maxItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            example: 6jyMKuFuAq3gLnmStTKyBQ
+        cmd:
+          type: integer
+          example: 20
+        data:
+          type: string
+          example: {
+            "description": "File Description",
+            "metadata": "File metadata",
+            "file_type": "map"
+          }
+
+    NodeFileUploadPostResponse:
+      type: object
+      properties:
+        node_ids:
+          type: array
+          minItems: 1
+          maxItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            example: 6jyMKuFuAq3gLnmStTKyBQ
+        data:
+          type: string
+          example: {
+            "file_id": "vLaz2Z6WHtgM5VvcGhZDTJ",
+            "url": "https://download_url.com"
+          }
+        cmd:
+          type: integer
+          example: 20
+        for_user:
+          type: boolean
+          example: true
+
+    OtaFetchUrlAdditionalData:
+      type: object
+      properties:
+        action:
+          type: string
+          example: "wait"
+          description: Action to be performed by device
+        ota_task:
+          type: integer
+          format: int64
+          description: OTA task duration in seconds
+        min_wait:
+          type: integer
+          format: int64
+          nullable: true
+          description: Minimum wait time in seconds
+        max_wait:
+          type: integer
+          format: int64
+          nullable: true
+          description: Maximum wait time in seconds
+
+    CmdResponseError:
+      type: object
+      properties:
+        status:
+          type: string
+          example: failure
+        error_code:
+          type: string
+          example: 30XXXX
+        description:
+          type: string
+          example: Failure description
+
+    HttpCmdRespRequest:
+      type: string
+      format: base64
+      description: Base64 encoded request data
+      example: AwEABQIAAA==
+
+    HttpCmdRespResponse:
+      type: string
+      format: base64
+      description: Base64 encoded response data
+      example: ARZ0Q3d5cHJnWHltODl6SllKdEgzenpIAgECBQIBAAYSeyJicmlnaHRuZXNzIjo2N30K
+    NodeConfigRequest:
+      type: object
+      properties:
+        node_id:
+          type: string
+          description: "Unique identifier for the node"
+          example: "nodeId"
+        config_version:
+          type: string
+          description: "Version of the configuration format"
+          example: "2019-09-11"
+        info:
+          type: object
+          properties:
+            name:
+              type: string
+              description: "Name of the node"
+              example: "My_Light"
+            fw_version:
+              type: string
+              description: "Firmware version"
+              example: "2.0"
+            type:
+              type: string
+              description: "Type of the device"
+              example: "LightBulb"
+            subtype:
+              type: string
+              description: "Subtype of the device"
+              example: "Esp-Bulb"
+            project_name:
+              type: string
+              description: "Name of the project"
+              example: "Esp test"
+          required:
+            - name
+            - type
+        attributes:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: "Name of the attribute"
+                example: "cmd-resp"
+              value:
+                type: string
+                description: "Value of the attribute"
+                example: "1"
+            required:
+              - name
+              - value
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: "Name of the device"
+                example: "Light"
+              type:
+                type: string
+                description: "Type of the device"
+                example: "esp.device.lightbulb"
+              primary:
+                type: string
+                description: "Primary parameter name"
+                example: "power"
+              attributes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: "Name of the attribute"
+                      example: "serial_number"
+                    value:
+                      type: string
+                      description: "Value of the attribute"
+                      example: "012345"
+              params:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: "Name of the parameter"
+                      example: "power"
+                    type:
+                      type: string
+                      description: "Type of the parameter"
+                      example: "esp.param.name"
+                    data_type:
+                      type: string
+                      enum: ["bool", "int", "float", "string"]
+                      description: "Data type of the parameter"
+                    properties:
+                      type: array
+                      items:
+                        type: string
+                        enum: ["read", "write", "time_series"]
+                    bounds:
+                      type: object
+                      properties:
+                        min:
+                          type: number
+                          description: "Minimum value"
+                        max:
+                          type: number
+                          description: "Maximum value"
+                    ui_type:
+                      type: string
+                      description: "UI component type"
+                      example: "esp.ui.toggle"
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: "Name of the service"
+                example: "Time"
+              type:
+                type: string
+                description: "Type of the service"
+                example: "esp.service.time"
+              attributes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: "Name of the attribute"
+                      example: "deactivation_support"
+                    value:
+                      type: string
+                      description: "Value of the attribute"
+                      example: "no"
+              params:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: "Name of the parameter"
+                      example: "TZ"
+                    type:
+                      type: string
+                      description: "Type of the parameter"
+                      example: "esp.param.tz"
+                    data_type:
+                      type: string
+                      enum: ["bool", "int", "float", "string"]
+                      description: "Data type of the parameter"
+                    properties:
+                      type: array
+                      items:
+                        type: string
+                        enum: ["read", "write", "time_series"]
+                    bounds:
+                      type: object
+                      properties:
+                        min:
+                          type: number
+                          description: "Minimum value"
+                        max:
+                          type: number
+                          description: "Maximum value"
+                        step:
+                          type: number
+                          description: "Step value for numeric parameters"
+                    ui_type:
+                      type: string
+                      description: "UI component type"
+                      example: "esp.ui.text"                      
+      required:
+        - node_id
+        - config_version
+        - info
+        - devices
+
+    NodeLocalControlRequest:
+      type: object
+      additionalProperties:
+        type: object
+        description: "Device parameters"
+        additionalProperties: true
+      example: {
+        "Light": {
+          "brightness": 165,
+          "output": true
+        }
+      }
+
+  examples:
+    NodeFileUploadGetResponseJSON:
+      summary: Example response for Node File Upload GET
+      value:
+        requests:
+          - request_id: "6jyMKuFuAq3gLnmStTKyBQ"
+            status: "in_progress"
+            request_data:
+              file_id: "abcd1234efgh5678"
+              timeout: 3600
+              url: "https://example.com/upload/file1"
+            for_user: true
+            node_id: "6jyMKuFuAq3gLnmStTKyBQ"
+            request_timestamp: 1713799200
+            expiration_timestamp: 1713802800
+          - request_id: "8xyzMnOpQrStUvWxYz123"
+            status: "completed"
+            request_data:
+              file_id: "ijkl9012mnop3456"
+              timeout: 1800
+              url: "https://example.com/upload/file2"
+            for_user: false
+            node_id: "7abcDeFgHiJkLmNoPq456"
+            request_timestamp: 1713788400
+            expiration_timestamp: 1713792000
+

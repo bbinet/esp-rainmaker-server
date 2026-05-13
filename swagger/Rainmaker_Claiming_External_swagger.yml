@@ -1,0 +1,205 @@
+openapi: 3.0.0
+info:
+  description: API definitions for ESP RainMaker Claiming Service
+  version: 1.0.0
+  title: ESP RainMaker Claiming Service - API definitions
+  termsOfService: https://rainmaker.espressif.com/docs/terms-of-use
+  contact:
+    email: esp-rainmaker-admin@espressif.com
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+tags:
+  - name: Stand-alone claiming service
+    description: Initiate and Verify APIs for Claiming devices 
+paths:
+  /claim/initiate:
+    post:
+      tags:
+        - Stand-alone claiming service
+      summary: Initiates the claiming process for devices 
+      description: "This API initiates the claiming process for devices. The user passes a **mac_address** in the initiate request along with the **platform**. In the request payload, the platform can be one of the valid platforms. The initiate request generates a claim. In case of authenticated claiming, a **node_id** is returned in the response. In case of unauthenticated claiming, **auth_id and challenge** are returned. The access_token can be passed as the authorisation header, it is optional in case of unauthenticated claiming<br><br>
+      
+                    Valid Platforms are-<br> 1. ESP32<br>2. ESP32S2<br> 3. ESP32C3<br> 4. ESP32S3<br>5. ESP32C2 <br>6. ESP32C6 <br>7. ESP32H2
+                    Platforms which supported Unauthenticated Claiming are-<br> 1. ESP32S3 <br>2. ESP32S2<br> 3. ESP32C3<br> 4. ESP32C6 <br>5. ESP32H2 <br>"
+      operationId: claiminitiate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimInitiateRequest"
+        description: Request body for creating new claim initiate request. **platform** can be one of valid platforms. **mac_addr** format will be all capitals with no colons in between and having only hex values, e.g. 7CDFA100033B
+        required: true
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AuthenticatedClaimResponse'
+                  - $ref: '#/components/schemas/UnauthenticatedClaimResponse'
+              examples:
+                Claim Initiate Authenticated:
+                  value:
+                    node_id: 'string'
+                Claim Initiate Unauthenticated:
+                  value:
+                    auth_id: 'string'
+                    challenge: 'string'
+        "400":
+          description: failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+      security:
+      - AccessToken: [] 
+     
+  /claim/verify:
+    post:
+      tags:
+        - Stand-alone claiming service
+      summary: "Verification of the claiming request for devices" 
+      description: "This API verifies the claiming request for devices. In case of authenticated claiming, the user passes the **Certificate Signing Request** and the claiming verify API returns the **certificate** for the device. For unauthenticated claiming, the user passes the **auth_id, challenge_response and the Certificate Signing Request** in the request. In the response, the device **certificate** is returned. If there are any failures ( claim quota is insufficient or invalid challenge_response ), an error is returned. The access_token can be passed as the authorisation header, but it is **optional for esp32s2**"
+      operationId: claimverify
+      parameters:
+        - name: matter
+          in: query
+          description: Indicates whether device certificate should be matter compliant.
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: test
+          in: query
+          description: Applicable only if matter=true. Indicates whether the claiming is done for test.
+          required: false
+          schema:
+            type: boolean
+            default: false    
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/AuthenticatedClaimverifyRequest'
+                - $ref: '#/components/schemas/UnauthenticatedClaimVerifyRequest'
+            examples:
+              Claim Verify Authenticated:
+                value:
+                  csr: 'string'
+                  send_mqtt_host: true
+                  node_policies: 'videostream'
+              Claim Verify Unauthenticated:
+                value:
+                  auth_id: 'string'
+                  challenge_response: 'string'
+                  csr: 'string'
+                  send_mqtt_host: true
+        description: Request body for verifying claim request. **csr** is Certificate Signing Request for node certificate. For unauthenticated claim verify **challenge_response** and **auth_id** are required. 
+        required: true
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimingVerifyResponse"
+        "400":
+          description: failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIFailureResponse"
+      security:
+      - AccessToken: [] 
+  
+externalDocs:
+  description: Find out more about ESP RainMaker
+  url: https://rainmaker.espressif.com/
+servers:
+  - url: https://esp-claiming.rainmaker.espressif.com
+    description: RainMaker Claiming API Url
+  - url: https://claiming.rainmaker.espressif.com.cn
+    description: RainMaker China Claiming API Url
+components:
+  securitySchemes:
+    AccessToken:
+      type: apiKey
+      in: header
+      name: Authorization 
+  schemas:
+    ClaimInitiateRequest:
+      type: object
+      properties:
+        mac_addr:
+          type: string
+          description : 'mac_addr format will be all capitals with no colons in between and having only hex values'
+        platform:
+          type: string 
+      xml:
+        name: ClaimInitiateRequestData
+    AuthenticatedClaimResponse:
+      type: object
+      properties:
+        node_id:
+          type: string
+      xml:
+        name: ClaimResponseForESP32data
+    UnauthenticatedClaimResponse:
+      type: object
+      properties:
+        auth_id:
+          type: string
+        challenge:
+          type: string
+      xml:
+        name: ClaimResponseForESP32data
+    AuthenticatedClaimverifyRequest:
+      type: object
+      properties:
+        csr:
+          type: string
+        send_mqtt_host:
+          type: boolean
+        node_policies:
+          type: string
+          example: mqtt,videostream
+          description: 'Comma separated list of node policies to apply'
+    UnauthenticatedClaimVerifyRequest:
+      type: object
+      properties:
+        auth_id:
+          type: string
+        challenge_response:
+          type: string
+        csr:
+          type: string
+        send_mqtt_host:
+          type: boolean
+        node_policies:
+          type: string
+          example: mqtt,videostream
+          description: 'Comma separated list of node policies to apply'
+    ClaimingVerifyResponse:
+      type: object
+      properties:
+        certificate:
+          type: string
+        mqtt_host:
+          type: string
+          example: 'a2w2vjfj9th3iq.ats.iot.<region>.amazonaws.com'
+        mqtt_cred_host:
+          type: string
+          description: 'MQTT credential host endpoint to get credentials for the node'
+          example: 'a2w2vjfj9th3iq.credentials.iot.<region>.amazonaws.com'
+      xml:
+        name: ClaimVerifyResponsedata
+    APIFailureResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        description:
+          type: string
