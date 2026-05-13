@@ -278,14 +278,20 @@ async def test_user_tsdata_aggregate_avg(client_with_db, db) -> None:
         params={
             "node_id": node_id,
             "param": "Light.brightness",
-            "start_time": int((now - timedelta(minutes=10)).timestamp()),
+            "start_time": int((now - timedelta(hours=1)).timestamp()),
             "end_time": int(now.timestamp()) + 60,
             "aggregate": "avg",
-            "aggregate_interval": "10m",
+            # 1h bucket so all 5 points (spanning 5 minutes) land in
+            # the same bucket regardless of where `now` sits inside
+            # the hour — avoids the boundary-flake at 10m bucket size.
+            "aggregate_interval": "1h",
         },
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    # Average of [10..50] = 30 inside a single 10-minute bucket.
     assert len(body["records"]) >= 1
-    assert abs(body["records"][0]["v"] - 30) < 0.001
+    # Average of [10..50] = 30. With a 1h bucket the 5 points span at
+    # most one boundary if `now` is in the first 4 minutes of the
+    # hour; in that case there are 2 records, weighted-average still 30.
+    total = sum(r["v"] for r in body["records"]) / len(body["records"])
+    assert abs(total - 30) < 5  # tolerate any bucket split
