@@ -7,6 +7,13 @@ name: mirror-third-party-images
 #   2. The exact digests we test against are pinned in our own registry
 #      and survive upstream tag mutations or repository deletions.
 #
+# Destinations are under `ghcr.io/<repo>/<image>` (repo namespace),
+# not `ghcr.io/<user>/<image>` (user namespace). GITHUB_TOKEN cannot
+# create new packages in the user namespace without manual UI setup
+# (which would yield `denied: permission_denied: write_package` on
+# first push), but it has write access by default to packages owned
+# by the repo. This trades a longer image name for zero manual setup.
+#
 # Runs weekly (Monday 03:00 UTC) and on manual trigger. Re-pulling the
 # same tag is cheap: only changed layers are pushed.
 
@@ -90,7 +97,12 @@ jobs:
       - name: Pull and push (preserve all platforms)
         env:
           SRC: ${{ matrix.image.src }}
-          DST: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.dst }}
+          # Push under the REPO namespace, not the user namespace.
+          # GITHUB_TOKEN has write access by default to packages owned
+          # by the repo (`ghcr.io/<repo>/<image>`), but cannot create
+          # new packages in the user namespace (`ghcr.io/<user>/<image>`
+          # → 403 denied: permission_denied: write_package).
+          DST: ghcr.io/${{ github.repository }}/${{ matrix.image.dst }}
         run: |
           set -euo pipefail
           echo "::group::imagetools create $SRC -> $DST"
