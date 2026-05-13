@@ -38,12 +38,19 @@ deploy/k8s/
 # 1. Validate
 make k8s-validate                                # ruff/kubeconform across 3 overlays
 
-# 2. Build + push the image
-docker build -t registry.example.com/rainmaker-server:0.1.0 \
-  -f deploy/docker/Dockerfile .
-docker push registry.example.com/rainmaker-server:0.1.0
-
-# Update the image tag in deploy/k8s/base/kustomization.yaml
+# 2. The official image is already published on ghcr.io
+#    (.github/workflows/publish.yml builds + pushes on every v*.*.* tag).
+#    To pin a specific tag, edit `images:` in deploy/k8s/base/kustomization.yaml:
+#
+#      images:
+#        - name: rainmaker-server
+#          newName: ghcr.io/bbinet/esp-rainmaker-server
+#          newTag: v0.1.0
+#
+#    For a fork, build + push to your own ghcr namespace:
+#      docker build -t ghcr.io/<your-user>/esp-rainmaker-server:0.1.0 \
+#        -f deploy/docker/Dockerfile .
+#      docker push ghcr.io/<your-user>/esp-rainmaker-server:0.1.0
 
 # 3. Prepare Secrets (do NOT use the placeholder values)
 kubectl create namespace rainmaker
@@ -135,8 +142,10 @@ cluster's normal mechanism (Velero, CloudNativePG, Stash, etc).
 ### Rolling upgrade
 
 ```bash
-# Re-tag the image, then
-kubectl -n rainmaker set image deployment/api api=registry.example.com/rainmaker-server:0.2.0
+# Push a v* tag (the publish.yml workflow handles the image build).
+# Then on the cluster:
+kubectl -n rainmaker set image deployment/api \
+  api=ghcr.io/bbinet/esp-rainmaker-server:v0.2.0
 kubectl -n rainmaker rollout status deployment/api
 ```
 

@@ -4,20 +4,32 @@ Ce document décrit comment valider end-to-end le backend `esp-rainmaker-server`
 contre les vrais clients qu'il sert : firmware ESP, appli React Native officielle
 et déploiement Kubernetes.
 
-Les tests automatisés (`make test`) couvrent **les contrats internes** (modèles,
-services, routes, parsing MQTT) — 78 tests verts au commit `62a5b15`. Ce plan
-couvre le reste : la chaîne *réseau + broker + storage + firmware + appli* que
-les tests unitaires ne touchent pas.
+Les tests automatisés couvrent **les contrats internes** (modèles, services,
+routes, parsing MQTT) :
+
+- 78 tests pytest (9 unit + 69 integration via testcontainers) — `make test`
+  (ou granulaire : `make test-unit` / `make test-integration`)
+- 21 live cases `scripts/live_verify.sh` — Tests #2 (security), #7 (sharing),
+  #9 (automations CRUD) contre la stack compose
+- 13 live cases `scripts/live_verify_prod_like.sh` — NGINX mTLS Ingress emulation,
+  multi-replica scale, read-only fs
+- `make test-live` lance les 2 scripts ; `make e2e` fait le bootstrap stack +
+  PKI + Garage puis `test-live` en un seul `make`
+- CI `live-verify` job exécute la même chose sur runner GHA après chaque push
+
+Ce plan couvre le reste : la chaîne *réseau + broker + storage + firmware + appli*
+que les tests automatisés ne touchent pas (vraie appli RN, vrai ESP32, vrai k8s,
+load).
 
 ## Vue d'ensemble — 6 paliers
 
 | Palier | Objectif | Hardware | Statut |
 |---|---|---|---|
-| **A** | Stack locale auto-vérifiée (curl-only) | aucun | ✅ Validé |
-| **B** | Simulateur firmware Python (`scripts/fake_node.py`) | aucun | ✅ Validé (commit `a2060be`) |
+| **A** | Stack locale auto-vérifiée (curl-only) | aucun | ✅ Validé + automatisé via CI `live-verify` (job `.github/workflows/ci.yml`) |
+| **B** | Simulateur firmware Python (`scripts/fake_node.py`) | aucun | ✅ Validé (commit `a2060be`) ; cycle complet exercé en CI via `scripts/live_verify_prod_like.sh` |
 | **C** | Appli RN officielle `esp-rainmaker-home` | smartphone | À faire |
 | **D** | Vrai device ESP32 flashé `esp-rainmaker` | ESP32-S3/C3/C6/H2 | À faire |
-| **E** | Déploiement Kubernetes (kustomize) | cluster kind / k3s / cloud | À faire |
+| **E** | Déploiement Kubernetes (kustomize) | cluster kind / k3s / cloud | ⚠️ partiel — manifests validés (`make k8s-validate`), pas encore appliqué sur un cluster réel ; image `ghcr.io/bbinet/esp-rainmaker-server:v0.1.0` publiée |
 | **F** | Load + chaos (post-MVP) | facultatif | À faire |
 
 ---
@@ -95,9 +107,10 @@ $CURL -X POST $API/v1/login2 -H 'content-type: application/json' \
 $CURL $API/v1/user2 -H "Authorization: <accesstoken>"
 ```
 
-ℹ️ Note : `scripts/live_verify.sh` automatise les Tests #2/#7/#9 (21 checks)
-et `scripts/live_verify_prod_like.sh` couvre les chemins NGINX + mTLS + scale
-(13 checks). Voir `make e2e` ou les scripts directement.
+ℹ️ Note : `make test-live` automatise les Tests #2/#7/#9 (21 checks) + NGINX
+mTLS + scale + read-only fs (13 checks), soit `scripts/live_verify.sh` puis
+`scripts/live_verify_prod_like.sh`. `make e2e` ajoute le bootstrap de la stack
+(PKI + Garage + /etc/hosts) si tu pars de rien.
 
 ✅ **Critères succès A** : les 4 curl répondent 200, le mail de confirmation
 arrive dans smtp4dev, l'API rejette `Authorization: Bearer <token>` (401).
@@ -186,7 +199,10 @@ python scripts/fake_node.py run --cert-dir var/devices/7cdfa1000001 &
 SIM_PID=$!
 
 # Côté "app" : signup + login (Palier A déjà fait)
-TOKEN=$(curl -s -X POST localhost:8000/v1/login2 \
+export API=https://api.local
+export CURL='curl -s --cacert var/pki/ca-chain.pem'
+
+TOKEN=$($CURL -X POST $API/v1/login2 \
   -H 'content-type: application/json' \
   -d '{"user_name":"alice@local","password":"Alice-Pass-1!"}' | jq -r .accesstoken)
 USER_ID=$(docker compose exec -T postgres psql -U rainmaker -tA \
@@ -194,7 +210,7 @@ USER_ID=$(docker compose exec -T postgres psql -U rainmaker -tA \
 
 # Mapping legacy secret_key
 SECRET="topsecret-$(date +%s)"
-curl -X PUT localhost:8000/v1/user/nodes/mapping \
+$CURL -X PUT $API/v1/user/nodes/mapping \
   -H "Authorization: $TOKEN" -H 'content-type: application/json' \
   -d "{\"node_id\":\"7cdfa1000001\",\"secret_key\":\"$SECRET\",\"operation\":\"add\"}"
 
@@ -203,11 +219,11 @@ python scripts/fake_node.py publish-mapping \
   --cert-dir var/devices/7cdfa1000001 --user-id "$USER_ID" --secret-key "$SECRET"
 
 # Vérifier le mapping
-curl localhost:8000/v1/user/nodes -H "Authorization: $TOKEN"
+$CURL $API/v1/user/nodes -H "Authorization: $TOKEN"
 # → {"nodes":["7cdfa1000001"], "total": 1}
 
 # App pousse une valeur
-curl -X PUT "localhost:8000/v1/user/nodes/params?node_id=7cdfa1000001" \
+$CURL -X PUT "$API/v1/user/nodes/params?node_id=7cdfa1000001" \
   -H "Authorization: $TOKEN" -H 'content-type: application/json' \
   -d '{"Light":{"power":true,"brightness":85}}'
 
@@ -266,26 +282,30 @@ l'écran de login). Y rentrer ou scanner un QR :
 
 ```json
 {
-  "baseUrl": "https://<dev-machine-ip>:8000",
+  "baseUrl": "https://api.rainmaker.<your-domain>",
   "version": "v1",
-  "authUrl": "https://<dev-machine-ip>:8000",
+  "authUrl": "https://api.rainmaker.<your-domain>",
   "clientId": "rainmaker-app"
 }
 ```
 
-⚠ iOS / Android moderne bloquent HTTP en clair — il faut HTTPS. Options :
+⚠ iOS / Android moderne bloquent HTTP en clair — il faut HTTPS. Le compose
+dev expose déjà NGINX sur 443 (`api.local`, certs auto-signés sous
+`var/pki/`). Options pour rendre l'IP du dev accessible au téléphone :
 
-**Option 1 — mkcert** (recommandé pour dev) :
+**Option 1 — Trust le root CA dev sur le téléphone** :
 
 ```bash
-brew install mkcert nss
-mkcert -install
-mkcert localhost <dev-machine-ip> rainmaker.local
-# Mettre en place un nginx local devant :8000 avec ces certs
+# Installer var/pki/ca-root.pem comme trust anchor sur Android/iOS
+# (Settings → Security → Encryption & credentials → Install certificate)
+# Puis pointer baseUrl vers https://<dev-machine-ip> (port 443)
 ```
 
-**Option 2 — ngrok / cloudflared** : exposer `localhost:8000` derrière
-un domaine HTTPS public.
+**Option 2 — ngrok / cloudflared** : exposer `https://api.local` (via NGINX)
+derrière un domaine HTTPS public auto-signé valide.
+
+**Option 3 — Brancher l'appli sur un déploiement k8s avec cert-manager + LE**
+(plus rapide en pratique que de patcher le trust store mobile).
 
 ### C.3 Parcours smoke
 
@@ -341,9 +361,11 @@ cd esp-rainmaker/examples/led_light
 
 ```
 ESP RainMaker Config →
-  Claim Service Base URL : https://<dev-machine-ip>:8000
+  Claim Service Base URL : https://claim.rainmaker.<your-domain>
+                           (ou https://<dev-machine-ip>:444 si le device fait
+                            confiance au root CA dev — port NGINX claim.local)
   Use Self Claiming      : Y   (ou Assisted, pour ESP32 classique)
-  MQTT Host              : <dev-machine-ip>
+  MQTT Host              : <dev-machine-ip>  (ou mqtt.rainmaker.<your-domain>)
   MQTT Port              : 8883
 ```
 
@@ -414,25 +436,28 @@ Côté backend, les logs `vmq-authz` doivent montrer le même CN.
 
 ```bash
 # Admin upload binaire
+export API=https://api.local
+export CURL='curl --cacert var/pki/ca-chain.pem'
 TOKEN=<admin_token>
-RESP=$(curl -X POST localhost:8000/v1/admin/otaimage/upload_request \
+
+RESP=$($CURL -X POST $API/v1/admin/otaimage/upload_request \
   -H "Authorization: $TOKEN" -H 'content-type: application/json' \
   -d '{"name":"led_light-1.1.0","fw_version":"1.1.0","file_size":1048576}')
 
 IMG_ID=$(echo $RESP | jq -r .ota_image_id)
 URL=$(echo $RESP | jq -r .upload_url)
 
-# Upload du binaire built par idf.py
+# Upload du binaire built par idf.py (URL est presigned Garage, pas NGINX)
 curl -T build/led_light.bin "$URL"
 
 # Calcul MD5 et confirm
 MD5=$(md5sum build/led_light.bin | awk '{print $1}')
-curl -X POST localhost:8000/v1/admin/otaimage/upload_confirm \
+$CURL -X POST $API/v1/admin/otaimage/upload_confirm \
   -H "Authorization: $TOKEN" -H 'content-type: application/json' \
   -d "{\"ota_image_id\":\"$IMG_ID\",\"file_md5\":\"$MD5\"}"
 
 # Créer le job
-curl -X POST localhost:8000/v1/admin/otajob \
+$CURL -X POST $API/v1/admin/otajob \
   -H "Authorization: $TOKEN" -H 'content-type: application/json' \
   -d "{\"name\":\"prod-rollout\",\"ota_image_id\":\"$IMG_ID\",\"nodes\":[\"<node_id>\"]}"
 ```
@@ -499,14 +524,29 @@ kubectl -n rainmaker create secret generic rainmaker-db \
 make k8s-validate              # kubectl kustomize sur dev / staging / prod
 ```
 
-### E.3 Construire et pousser l'image
+### E.3 Image déjà publiée sur ghcr.io
+
+Le workflow `.github/workflows/publish.yml` publie `rainmaker-server` sur
+`ghcr.io/bbinet/esp-rainmaker-server` à chaque tag `v*.*.*`. Pour un déploiement
+en plus :
 
 ```bash
-docker build -t registry.example.com/rainmaker-server:0.1.0 \
-  -f deploy/docker/Dockerfile .
-docker push registry.example.com/rainmaker-server:0.1.0
+# Pull et confirmer le digest
+docker pull ghcr.io/bbinet/esp-rainmaker-server:v0.1.0
 
-# Mettre à jour le tag dans deploy/k8s/base/kustomization.yaml
+# Mettre à jour `images:` dans deploy/k8s/base/kustomization.yaml :
+#   images:
+#     - name: rainmaker-server
+#       newName: ghcr.io/bbinet/esp-rainmaker-server
+#       newTag: v0.1.0
+```
+
+Pour publier votre propre fork :
+
+```bash
+docker build -t ghcr.io/<your-user>/esp-rainmaker-server:0.1.0 \
+  -f deploy/docker/Dockerfile .
+docker push ghcr.io/<your-user>/esp-rainmaker-server:0.1.0
 ```
 
 ### E.4 Appliquer l'overlay dev
@@ -661,12 +701,17 @@ stateful sans interruption visible côté appli.
 
 | Outil | Usage |
 |---|---|
-| `make install` | Crée venv + installe dépendances |
-| `make test` | 78 tests unit + intégration |
-| `make compose-up` | Lance la stack locale |
-| `python scripts/gen_pki.py` | Génère la PKI dev (root + intermédiaire + serveur) |
+| `make install` | venv + dépendances |
+| `make test` | 78 tests pytest (9 unit + 69 integration) |
+| `make test-unit` / `make test-integration` | granularité, sans tout relancer |
+| `make compose-up` | Lance la stack locale (compose up -d --build --wait) |
+| `make compose-stack` | Bootstrap full : compose-up + PKI dev + Garage init + /etc/hosts |
+| `make test-live` | scripts/live_verify*.sh — 21 + 13 cases (stack doit déjà tourner) |
+| `make e2e` | compose-stack + test-live en une commande (~8 min) |
+| `make test-all` | pytest + live-verify (stack déjà up) |
+| `python scripts/gen_pki.py` | PKI dev (root + intermédiaire + serveur) — appelé par compose-stack |
 | `python scripts/fake_node.py <cmd>` | Simulateur firmware (provision/claim/run/mapping) |
-| `make k8s-validate` | Valide les overlays kustomize |
+| `make k8s-validate` | Valide les 3 overlays kustomize |
 | `docker compose logs vmq-authz \| grep vmq_authz_` | Trace les décisions d'autorisation |
 | `docker compose exec postgres psql -U rainmaker` | Inspection BDD |
 | `openssl verify -CAfile var/pki/ca-chain.pem <cert>` | Validation chaîne PKI |
