@@ -25,13 +25,19 @@ async def get_node_from_mtls(
         raise unauthorized("Client certificate required")
 
     cert = (
-        await db.execute(
-            select(NodeCertificate).where(
-                NodeCertificate.cn == x_ssl_client_cn,
-                NodeCertificate.revoked.is_(False),
+        (
+            await db.execute(
+                select(NodeCertificate)
+                .where(
+                    NodeCertificate.cn == x_ssl_client_cn,
+                    NodeCertificate.revoked.is_(False),
+                )
+                .limit(1)
             )
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .first()
+    )
     if cert is None:
         raise unauthorized("Unknown or revoked client certificate")
 

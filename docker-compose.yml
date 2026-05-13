@@ -16,11 +16,16 @@ x-app-env: &app-env
   RM_MINIO_ACCESS_KEY: GKxxxx_replace_me
   RM_MINIO_SECRET_KEY: change_me_long_secret
   RM_MQTT_BROKER_HOST: vernemq
-  RM_MQTT_BROKER_PORT: "8883"
+  RM_MQTT_BROKER_PORT: "1883"
   RM_MQTT_WS_HOST: vernemq
   RM_MQTT_WS_PORT: "8083"
   RM_SMTP_HOST: smtp4dev
   RM_SMTP_PORT: "25"
+  # Mount the CA chain so api signs CSRs with the same intermediate
+  # the simulator and (later) the real ESP32 use.
+  RM_PKI_CA_CERT_PATH: /etc/rainmaker/pki/ca-intermediate.pem
+  RM_PKI_CA_KEY_PATH: /etc/rainmaker/pki/ca-intermediate.key
+  RM_PKI_CA_ROOT_CERT_PATH: /etc/rainmaker/pki/ca-root.pem
 
 services:
   postgres:
@@ -65,14 +70,32 @@ services:
       DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_PUBLISH__ENDPOINT: "http://vmq-authz:8001/auth/on_publish"
       DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_SUBSCRIBE__HOOK: "auth_on_subscribe"
       DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_SUBSCRIBE__ENDPOINT: "http://vmq-authz:8001/auth/on_subscribe"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__ON_CLIENT_GONE__HOOK: "on_client_gone"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__ON_CLIENT_GONE__ENDPOINT: "http://vmq-authz:8001/on_client_offline"
+      # mTLS listener for devices — VerneMQ verifies the cert against
+      # ca-chain.pem and propagates the CN as the MQTT username.
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT: "0.0.0.0:8883"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__CAFILE: "/etc/vernemq/certs/ca-chain.pem"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__CERTFILE: "/etc/vernemq/certs/server.pem"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__KEYFILE: "/etc/vernemq/certs/server.key"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__REQUIRE_CERTIFICATE: "on"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__USE_IDENTITY_AS_USERNAME: "on"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__TLS_VERSION: "tlsv1.2"
+      # Plain TCP listener for backend services (only reachable on the
+      # compose network or via a NetworkPolicy-restricted Service in k8s).
       DOCKER_VERNEMQ_LISTENER__TCP__DEFAULT: "0.0.0.0:1883"
       DOCKER_VERNEMQ_LISTENER__WS__DEFAULT: "0.0.0.0:8083"
+      DOCKER_VERNEMQ_LISTENER__HTTP__DEFAULT: "0.0.0.0:8888"
     ports:
       - "1883:1883"
+      - "8883:8883"
       - "8083:8083"
       - "8888:8888"
     volumes:
       - vernemq_data:/vernemq/data
+      - ./var/pki/ca-chain.pem:/etc/vernemq/certs/ca-chain.pem:ro
+      - ./var/pki/server.pem:/etc/vernemq/certs/server.pem:ro
+      - ./var/pki/server.key:/etc/vernemq/certs/server.key:ro
     depends_on:
       - vmq-authz
 
@@ -87,6 +110,8 @@ services:
     command: ["alembic", "upgrade", "head"]
     environment:
       <<: *app-env
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,6 +123,8 @@ services:
       <<: *app-env
     ports:
       - "8000:8000"
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -109,6 +136,8 @@ services:
       <<: *app-env
     ports:
       - "8001:8001"
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -118,6 +147,8 @@ services:
     command: ["python", "-m", "app.entrypoints.mqtt_ingestor"]
     environment:
       <<: *app-env
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -127,6 +158,8 @@ services:
     command: ["python", "-m", "app.entrypoints.worker"]
     environment:
       <<: *app-env
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

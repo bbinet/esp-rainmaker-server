@@ -21,6 +21,7 @@ import json
 from typing import Any
 
 import aiomqtt
+import paho.mqtt.client as paho
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -53,6 +54,7 @@ async def publish_node_topic(
             port=settings.mqtt_broker_port,
             username=settings.mqtt_internal_user,
             password=settings.mqtt_internal_password.get_secret_value(),
+            protocol=paho.MQTTv311,
         ) as client:
             await client.publish(topic, body, qos=qos, retain=retain)
     except Exception as exc:  # noqa: BLE001

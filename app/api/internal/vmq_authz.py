@@ -13,30 +13,54 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps.db import get_db
+from app.core.logging import get_logger
 from app.services import vmq_authz as authz_service
 
 router = APIRouter(tags=["vmq-authz"])
+_logger = get_logger(__name__)
 
 
 @router.post("/auth/on_register")
 async def on_register(payload: dict, db: AsyncSession = Depends(get_db)) -> dict:
-    return await authz_service.authorise_register(db, username=payload.get("username"))
+    result = await authz_service.authorise_register(db, username=payload.get("username"))
+    _logger.info(
+        "vmq_authz_on_register",
+        username=payload.get("username"),
+        client_id=payload.get("client_id"),
+        result=result,
+    )
+    return result
 
 
 @router.post("/auth/on_publish")
 async def on_publish(payload: dict) -> dict:
-    return await authz_service.authorise_publish(
+    result = await authz_service.authorise_publish(
         username=payload.get("username"),
         topic=payload.get("topic", ""),
     )
+    _logger.info(
+        "vmq_authz_on_publish",
+        username=payload.get("username"),
+        topic=payload.get("topic"),
+        qos=payload.get("qos"),
+        result=result,
+    )
+    return result
 
 
 @router.post("/auth/on_subscribe")
 async def on_subscribe(payload: dict) -> dict:
-    return await authz_service.authorise_subscribe(
+    result = await authz_service.authorise_subscribe(
         username=payload.get("username"),
         topics=payload.get("topics"),
     )
+    _logger.info(
+        "vmq_authz_on_subscribe",
+        username=payload.get("username"),
+        topics=payload.get("topics"),
+        result=result,
+    )
+    return result
 
 
 @router.post("/on_client_online")
