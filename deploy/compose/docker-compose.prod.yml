@@ -46,6 +46,12 @@ x-default-logging: &logging
       max-file: "5"
 
 services:
+  # smtp4dev is a dev-only catch-all SMTP UI. In prod, mail goes to a
+  # real provider via RM_SMTP_HOST. We park the service behind a
+  # profile that's never activated so it doesn't get started.
+  smtp4dev:
+    profiles: ["dev-only"]
+
   postgres:
     <<: [*restart, *logging]
     deploy:

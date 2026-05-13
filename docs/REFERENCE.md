@@ -12,7 +12,9 @@
 ESP RainMaker est la solution end-to-end d'Espressif pour le contrôle distant de
 devices basés sur ESP32 sans config cloud côté utilisateur. Le service de référence
 est hébergé sur AWS (Cognito, IoT Core, S3, DynamoDB). Ce projet construit une
-**alternative auto-hébergeable sur Kubernetes**, compatible avec :
+**alternative auto-hébergeable**, déployable sur **Docker Compose (single
+host)** ou **Kubernetes (multi-host)** — voir `deploy/compose/README.md` et
+`deploy/k8s/README.md`. Compatible avec :
 
 1. Le **firmware ESP** : https://github.com/espressif/esp-rainmaker
 2. L'**appli RN** (Expo, React Native) : https://github.com/espressif/esp-rainmaker-home
@@ -26,7 +28,12 @@ est hébergé sur AWS (Cognito, IoT Core, S3, DynamoDB). Ce projet construit une
 
 ---
 
-## 2. Architecture cible (Kubernetes)
+## 2. Architecture cible
+
+Mêmes 7 services dans les deux targets ; les différences sont uniquement
+**opérationnelles** (réplication, autoscaling, isolation réseau). La
+description ci-dessous utilise le vocabulaire k8s ; pour la traduction
+Compose, voir `deploy/compose/README.md`.
 
 ### Composants applicatifs (image Docker unique, 4 Deployments)
 

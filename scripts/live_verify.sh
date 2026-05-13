@@ -28,19 +28,33 @@ RESULT() {
   fi
 }
 
-API=${API:-http://localhost:8000}
+# Default to the NGINX Ingress hostname (compose dev exposes `api` only
+# behind NGINX since commit 0a7fa04). Override with API=http://localhost:8000
+# when running against `make dev` (uvicorn outside docker).
+API=${API:-https://api.local}
+CA=${CA:-var/pki/ca-chain.pem}
+
+# curl wrapper: when API is https, add --cacert + --resolve so we don't
+# depend on /etc/hosts entries; transparent otherwise.
+CURL() {
+  if [[ "$API" == https://api.local* ]]; then
+    curl -s --cacert "$CA" --resolve "api.local:443:127.0.0.1" "$@"
+  else
+    curl -s "$@"
+  fi
+}
 
 ensure_user() {
   local name="$1" pwd="$2"
-  curl -s -X POST "$API/v1/user2" -H 'content-type: application/json' \
+  CURL -X POST "$API/v1/user2" -H 'content-type: application/json' \
     -d "{\"user_name\":\"$name\",\"password\":\"$pwd\"}" >/dev/null
   local code
   code=$(docker compose exec -T postgres psql -U rainmaker -tA \
     -c "SELECT confirm_code FROM users WHERE user_name='$name';" | tr -d ' \n')
-  [[ -n "$code" && "$code" != "" ]] && curl -s -X PUT "$API/v1/user2" \
+  [[ -n "$code" && "$code" != "" ]] && CURL -X PUT "$API/v1/user2" \
     -H 'content-type: application/json' \
     -d "{\"user_name\":\"$name\",\"verification_code\":\"$code\"}" >/dev/null
-  curl -s -X POST "$API/v1/login2" -H 'content-type: application/json' \
+  CURL -X POST "$API/v1/login2" -H 'content-type: application/json' \
     -d "{\"user_name\":\"$name\",\"password\":\"$pwd\"}" \
     | python3 -c 'import sys,json;print(json.load(sys.stdin)["accesstoken"])'
 }
@@ -51,15 +65,15 @@ ALICE_TOKEN=$(ensure_user "alice@live.local" "Alice-Live-1!")
 BOB_TOKEN=$(ensure_user "bob@live.local" "Bob-Live-1!")
 
 # T2.1 Bearer prefix
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$API/v1/user2" -H "Authorization: Bearer $ALICE_TOKEN")
+HTTP=$(CURL -o /dev/null -w "%{http_code}" "$API/v1/user2" -H "Authorization: Bearer $ALICE_TOKEN")
 RESULT "$HTTP" "401" "T2.1 — Bearer-prefixed token rejected"
 
 # T2.2 Missing header
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$API/v1/user2")
+HTTP=$(CURL -o /dev/null -w "%{http_code}" "$API/v1/user2")
 RESULT "$HTTP" "401" "T2.2 — Missing Authorization header rejected"
 
 # T2.3 Forged JWT
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$API/v1/user2" -H "Authorization: eyJ.fake.token")
+HTTP=$(CURL -o /dev/null -w "%{http_code}" "$API/v1/user2" -H "Authorization: eyJ.fake.token")
 RESULT "$HTTP" "401" "T2.3 — Forged JWT rejected"
 
 # T2.4 Cross-user access — set up Alice's node + mapping then verify Bob's access denied
@@ -77,16 +91,16 @@ INSERT INTO user_node_mappings (id, user_id, node_id, role, \"primary\", metadat
   VALUES (gen_random_uuid(), '$ALICE_ID', '$NODE_ID', 'primary', true, '{}')
   ON CONFLICT (user_id, node_id) DO NOTHING;" >/dev/null
 
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+HTTP=$(CURL -o /dev/null -w "%{http_code}" \
   "$API/v1/user/nodes/config?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN")
 RESULT "$HTTP" "403" "T2.4a — Bob can't read Alice's node config"
 
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+HTTP=$(CURL -o /dev/null -w "%{http_code}" -X PUT \
   "$API/v1/user/nodes/params?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN" \
   -H 'content-type: application/json' -d '{"Light":{"power":true}}')
 RESULT "$HTTP" "403" "T2.4b — Bob can't set Alice's params"
 
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+HTTP=$(CURL -o /dev/null -w "%{http_code}" \
   "$API/v1/user/nodes/config?node_id=$NODE_ID" -H "Authorization: $ALICE_TOKEN")
 RESULT "$HTTP" "200" "T2.4c — Alice can read her own node"
 
@@ -148,51 +162,51 @@ echo
 echo "================ Test #7 — sharing live ================"
 
 # Setup
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$API/v1/user/nodes/config?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN")
+HTTP=$(CURL -o /dev/null -w "%{http_code}" "$API/v1/user/nodes/config?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN")
 RESULT "$HTTP" "403" "T7.1 — Bob has no access before share"
 
-SHARE=$(curl -s -X PUT "$API/v1/user/nodes/sharing/requests" \
+SHARE=$(CURL -X PUT "$API/v1/user/nodes/sharing/requests" \
   -H "Authorization: $ALICE_TOKEN" -H 'content-type: application/json' \
   -d "{\"nodes\":[\"$NODE_ID\"],\"user_name\":\"bob@live.local\"}")
 REQ_ID=$(echo "$SHARE" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("request_id",""))')
 [[ -n "$REQ_ID" ]] && RESULT "yes" "yes" "T7.2 — Alice created share request" \
                   || RESULT "no" "yes" "T7.2 — Alice created share request"
 
-ACCEPT=$(curl -s -X PUT "$API/v1/user/nodes/sharing/requests" \
+ACCEPT=$(CURL -X PUT "$API/v1/user/nodes/sharing/requests" \
   -H "Authorization: $BOB_TOKEN" -H 'content-type: application/json' \
   -d "{\"request_id\":\"$REQ_ID\",\"accept\":true}")
 STATUS=$(echo "$ACCEPT" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("request_status",""))')
 RESULT "$STATUS" "accepted" "T7.3 — Bob accepts the request"
 
-LIST=$(curl -s "$API/v1/user/nodes" -H "Authorization: $BOB_TOKEN")
+LIST=$(CURL "$API/v1/user/nodes" -H "Authorization: $BOB_TOKEN")
 echo "$LIST" | grep -q "$NODE_ID" && RESULT "yes" "yes" "T7.4 — Bob now sees the node" \
                                  || RESULT "no" "yes" "T7.4 — Bob now sees the node"
 
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$API/v1/user/nodes/config?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN")
+HTTP=$(CURL -o /dev/null -w "%{http_code}" "$API/v1/user/nodes/config?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN")
 RESULT "$HTTP" "200" "T7.5 — Bob can read shared config"
 
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+HTTP=$(CURL -o /dev/null -w "%{http_code}" -X PUT \
   "$API/v1/user/nodes/params?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN" \
   -H 'content-type: application/json' -d '{"Light":{"power":true}}')
 RESULT "$HTTP" "200" "T7.6 — Bob can write params to shared node"
 
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+HTTP=$(CURL -o /dev/null -w "%{http_code}" -X DELETE \
   "$API/v1/user/nodes/sharing?nodes=$NODE_ID&user_name=bob@live.local" \
   -H "Authorization: $ALICE_TOKEN")
 RESULT "$HTTP" "200" "T7.7 — Alice revokes the share"
 
-LIST=$(curl -s "$API/v1/user/nodes" -H "Authorization: $BOB_TOKEN")
+LIST=$(CURL "$API/v1/user/nodes" -H "Authorization: $BOB_TOKEN")
 echo "$LIST" | grep -q "$NODE_ID" \
   && RESULT "still-visible" "gone" "T7.8 — Node removed from Bob's listing" \
   || RESULT "gone" "gone" "T7.8 — Node removed from Bob's listing"
 
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$API/v1/user/nodes/config?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN")
+HTTP=$(CURL -o /dev/null -w "%{http_code}" "$API/v1/user/nodes/config?node_id=$NODE_ID" -H "Authorization: $BOB_TOKEN")
 RESULT "$HTTP" "403" "T7.9 — Bob's access is rescinded immediately"
 
 echo
 echo "================ Test #9 — automations CRUD live ================"
 
-AID_RESP=$(curl -s -X POST "$API/v1/user/node_automation" \
+AID_RESP=$(CURL -X POST "$API/v1/user/node_automation" \
   -H "Authorization: $ALICE_TOKEN" -H 'content-type: application/json' \
   -d '{
     "name":"Light triggers Fan",
@@ -204,19 +218,19 @@ AID=$(echo "$AID_RESP" | python3 -c 'import sys,json;print(json.load(sys.stdin).
 [[ -n "$AID" ]] && RESULT "yes" "yes" "T9.1 — Create automation" \
                 || RESULT "no" "yes" "T9.1 — Create automation"
 
-CNT=$(curl -s "$API/v1/user/node_automation" -H "Authorization: $ALICE_TOKEN" \
+CNT=$(CURL "$API/v1/user/node_automation" -H "Authorization: $ALICE_TOKEN" \
   | python3 -c 'import sys,json;print(len(json.load(sys.stdin)["automations"]))')
 [[ "$CNT" -ge 1 ]] && RESULT "ge1" "ge1" "T9.2 — List returns >=1 automation" \
                    || RESULT "0" "ge1" "T9.2 — List returns >=1 automation"
 
-curl -s -X PUT "$API/v1/user/node_automation" \
+CURL -X PUT "$API/v1/user/node_automation" \
   -H "Authorization: $ALICE_TOKEN" -H 'content-type: application/json' \
   -d "{\"automation_id\":\"$AID\",\"enabled\":false}" >/dev/null
-ENABLED=$(curl -s "$API/v1/user/node_automation" -H "Authorization: $ALICE_TOKEN" \
+ENABLED=$(CURL "$API/v1/user/node_automation" -H "Authorization: $ALICE_TOKEN" \
   | python3 -c "import sys,json;d=json.load(sys.stdin);print([a for a in d['automations'] if a['automation_id']=='$AID'][0]['enabled'])")
 RESULT "$ENABLED" "False" "T9.3 — Update enabled=false reflected"
 
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+HTTP=$(CURL -o /dev/null -w "%{http_code}" -X DELETE \
   "$API/v1/user/node_automation?automation_id=$AID" -H "Authorization: $ALICE_TOKEN")
 RESULT "$HTTP" "200" "T9.4 — Delete automation"
 
