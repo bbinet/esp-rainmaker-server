@@ -64,8 +64,16 @@ def pg_dsn() -> Iterator[str]:
 
     from testcontainers.postgres import PostgresContainer
 
+    # Default to the ghcr.io mirror to dodge Docker Hub's anonymous
+    # rate-limit; override with TESTCONTAINERS_TIMESCALEDB_IMAGE for
+    # local runs against a different tag (e.g. when bumping pg16 → pg17).
+    image = os.environ.get(
+        "TESTCONTAINERS_TIMESCALEDB_IMAGE",
+        "ghcr.io/bbinet/esp-rainmaker-server/timescaledb:pg16",
+    )
+
     container = PostgresContainer(
-        image="timescale/timescaledb:latest-pg16",
+        image=image,
         dbname="rainmaker_test",
         username="rainmaker",
         password="rainmaker",
