@@ -13,8 +13,14 @@ x-app-env: &app-env
   RM_SECRET_KEY: dev-secret-key-32-bytes-minimum-pad!
   RM_DATABASE_URL: postgresql+asyncpg://rainmaker:rainmaker@postgres:5432/rainmaker
   RM_MINIO_ENDPOINT: garage:3900
-  RM_MINIO_ACCESS_KEY: GKxxxx_replace_me
-  RM_MINIO_SECRET_KEY: change_me_long_secret
+  RM_MINIO_ACCESS_KEY: ${RM_MINIO_ACCESS_KEY:-GKxxxx_replace_me}
+  RM_MINIO_SECRET_KEY: ${RM_MINIO_SECRET_KEY:-change_me_long_secret}
+  RM_MINIO_BUCKET_OTA: ${RM_MINIO_BUCKET_OTA:-rainmaker-ota}
+  RM_MINIO_REGION: garage
+  RM_FEATURE_S3_REAL: ${RM_FEATURE_S3_REAL:-false}
+  # Devices reach the presigned URL via localhost; rewrite the host.
+  RM_MINIO_PUBLIC_ENDPOINT: ${RM_MINIO_PUBLIC_ENDPOINT:-localhost:3900}
+  RM_MINIO_PUBLIC_SECURE: ${RM_MINIO_PUBLIC_SECURE:-false}
   RM_MQTT_BROKER_HOST: vernemq
   RM_MQTT_BROKER_PORT: "1883"
   RM_MQTT_WS_HOST: vernemq

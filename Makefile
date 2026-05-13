@@ -58,7 +58,14 @@ e2e: compose-up
 	$(PY) scripts/fake_node.py --base-url http://localhost:8000
 
 k8s-validate:
-	kubectl kustomize deploy/k8s/overlays/dev > /dev/null
-	kubectl kustomize deploy/k8s/overlays/staging > /dev/null
-	kubectl kustomize deploy/k8s/overlays/prod > /dev/null
-	@echo "All overlays render OK"
+	@for ov in dev staging prod; do \
+	  echo "=== overlay $$ov ==="; \
+	  kubectl kustomize deploy/k8s/overlays/$$ov > /dev/null && echo "  kustomize: OK"; \
+	  if command -v kubeconform >/dev/null 2>&1; then \
+	    kubectl kustomize deploy/k8s/overlays/$$ov | \
+	      kubeconform -summary -strict -kubernetes-version 1.30.0 \
+	        -skip Ingress -ignore-missing-schemas; \
+	  else \
+	    echo "  kubeconform not installed — install from https://github.com/yannh/kubeconform for deep schema validation"; \
+	  fi; \
+	done
