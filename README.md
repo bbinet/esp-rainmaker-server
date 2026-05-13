@@ -60,12 +60,27 @@ make compose-up
 # 3. Apply migrations (also runs automatically in docker-compose, but useful locally)
 make migrate
 
-# 4. Run the unit tests
+# 4. Run the unit + integration tests (integration needs Docker)
 make test
 
 # 5. Iterate on the API with auto-reload
 make dev   # uvicorn on http://localhost:8000
+
+# 6. Full live verification ladder (compose stack + 21 + 13 live cases)
+make e2e   # = compose-stack + test-live
 ```
+
+### Test targets at a glance
+
+| Target | What | Needs |
+|---|---|---|
+| `make test-unit` | 9 unit tests, ~5 s | nothing |
+| `make test-integration` | 69 integration tests (testcontainers) | Docker daemon |
+| `make test` | unit + integration (~1 min) | Docker daemon |
+| `make test-live` | `scripts/live_verify*.sh` — 21 + 13 cases | running compose stack |
+| `make compose-stack` | one-shot bootstrap: `compose-up` + dev PKI + Garage init + `/etc/hosts` | Docker daemon, `sudo` for `/etc/hosts` |
+| `make e2e` | `compose-stack` + `test-live` (~8 min) | Docker daemon, `sudo` |
+| `make test-all` | `test` + `test-live` (assumes stack already up) | Docker daemon |
 
 Sanity check (the dev compose stack puts NGINX in front of `api`, so the
 container's port 8000 is not bound to the host — go through NGINX or `exec`

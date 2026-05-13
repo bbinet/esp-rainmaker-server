@@ -1,4 +1,8 @@
-.PHONY: help install dev migrate test lint typecheck image compose-up compose-down e2e k8s-validate
+.PHONY: help install dev migrate \
+        test test-unit test-integration test-live test-all \
+        lint format typecheck \
+        image compose-up compose-down compose-stack e2e \
+        k8s-validate
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -7,17 +11,28 @@ PY := $(VENV)/bin/python
 
 help:
 	@echo "Targets:"
-	@echo "  install        Create venv and install dev dependencies"
-	@echo "  dev            Run uvicorn locally (auto-reload)"
-	@echo "  migrate        Run alembic upgrade head"
-	@echo "  test           Run pytest (unit + integration if Docker is up)"
-	@echo "  lint           Run ruff check + format check"
-	@echo "  typecheck      Run mypy"
-	@echo "  image          Build the Docker image"
-	@echo "  compose-up     Bring up the local stack (postgres+garage+vernemq+app)"
-	@echo "  compose-down   Tear down the local stack"
-	@echo "  e2e            Run end-to-end scenarios against compose stack"
-	@echo "  k8s-validate   Render kustomize overlays and validate against k8s schemas"
+	@echo ""
+	@echo "  install            Create venv and install dev dependencies"
+	@echo "  dev                Run uvicorn locally (auto-reload) — http://localhost:8000"
+	@echo "  migrate            Run alembic upgrade head"
+	@echo ""
+	@echo "  test               pytest unit + integration (integration needs Docker)"
+	@echo "  test-unit          pytest tests/unit/ only (fast, no Docker)"
+	@echo "  test-integration   pytest tests/integration/ (testcontainers Postgres+Timescale)"
+	@echo "  test-live          run scripts/live_verify*.sh against the running stack (21+13 cases)"
+	@echo "  test-all           test + test-live (full ladder, ~10 min)"
+	@echo ""
+	@echo "  lint               Run ruff check + format check"
+	@echo "  format             Run ruff format (writes)"
+	@echo "  typecheck          Run mypy --strict app"
+	@echo ""
+	@echo "  image              Build the Docker image (deploy/docker/Dockerfile)"
+	@echo "  compose-up         docker compose up -d --build --wait"
+	@echo "  compose-down       docker compose down -v"
+	@echo "  compose-stack      compose-up + gen_pki + init_garage + /etc/hosts (full bootstrap)"
+	@echo "  e2e                compose-stack + test-live (spin from scratch and run live)"
+	@echo ""
+	@echo "  k8s-validate       Render kustomize overlays and validate against k8s schemas"
 
 $(VENV):
 	$(PYTHON) -m venv $(VENV)
@@ -32,8 +47,26 @@ dev:
 migrate:
 	$(PY) -m alembic upgrade head
 
+# -------- tests --------
+
 test:
 	$(PY) -m pytest
+
+test-unit:
+	$(PY) -m pytest tests/unit/ -q
+
+test-integration:
+	$(PY) -m pytest tests/integration/ -q
+
+# Runs both live verification scripts against the running compose stack.
+# Assumes `make compose-stack` has been called once.
+test-live:
+	bash scripts/live_verify.sh
+	bash scripts/live_verify_prod_like.sh
+
+test-all: test test-live
+
+# -------- lint / type --------
 
 lint:
 	$(VENV)/bin/ruff check app tests
@@ -45,17 +78,30 @@ format:
 typecheck:
 	$(VENV)/bin/mypy app
 
+# -------- docker / compose --------
+
 image:
 	docker build -t rainmaker-server:dev -f deploy/docker/Dockerfile .
 
 compose-up:
-	docker compose up -d --build
+	docker compose up -d --build --wait
 
 compose-down:
-	docker compose down -v
+	docker compose down -v --remove-orphans
 
-e2e: compose-up
-	$(PY) scripts/fake_node.py --base-url http://localhost:8000
+# Full local bootstrap: stack + dev PKI + Garage layout/key/bucket + /etc/hosts
+# entries so curl + fake_node.py can reach NGINX vhosts. Idempotent.
+compose-stack: compose-up
+	@if [ ! -f var/pki/ca-chain.pem ]; then $(PY) scripts/gen_pki.py; fi
+	bash scripts/init_garage.sh
+	@if ! grep -q "api.local claim.local node.local" /etc/hosts 2>/dev/null; then \
+	  echo "127.0.0.1 api.local claim.local node.local" | sudo tee -a /etc/hosts >/dev/null \
+	    && echo "/etc/hosts updated"; \
+	fi
+
+e2e: compose-stack test-live
+
+# -------- k8s --------
 
 k8s-validate:
 	@for ov in dev staging prod; do \

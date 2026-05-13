@@ -8,11 +8,14 @@ Les tests automatisés couvrent **les contrats internes** (modèles, services,
 routes, parsing MQTT) :
 
 - 78 tests pytest (9 unit + 69 integration via testcontainers) — `make test`
+  (ou granulaire : `make test-unit` / `make test-integration`)
 - 21 live cases `scripts/live_verify.sh` — Tests #2 (security), #7 (sharing),
   #9 (automations CRUD) contre la stack compose
 - 13 live cases `scripts/live_verify_prod_like.sh` — NGINX mTLS Ingress emulation,
   multi-replica scale, read-only fs
-- CI `live-verify` job exécute les 2 scripts sur runner GHA après chaque push
+- `make test-live` lance les 2 scripts ; `make e2e` fait le bootstrap stack +
+  PKI + Garage puis `test-live` en un seul `make`
+- CI `live-verify` job exécute la même chose sur runner GHA après chaque push
 
 Ce plan couvre le reste : la chaîne *réseau + broker + storage + firmware + appli*
 que les tests automatisés ne touchent pas (vraie appli RN, vrai ESP32, vrai k8s,
@@ -104,9 +107,10 @@ $CURL -X POST $API/v1/login2 -H 'content-type: application/json' \
 $CURL $API/v1/user2 -H "Authorization: <accesstoken>"
 ```
 
-ℹ️ Note : `scripts/live_verify.sh` automatise les Tests #2/#7/#9 (21 checks)
-et `scripts/live_verify_prod_like.sh` couvre les chemins NGINX + mTLS + scale
-(13 checks). Voir `make e2e` ou les scripts directement.
+ℹ️ Note : `make test-live` automatise les Tests #2/#7/#9 (21 checks) + NGINX
+mTLS + scale + read-only fs (13 checks), soit `scripts/live_verify.sh` puis
+`scripts/live_verify_prod_like.sh`. `make e2e` ajoute le bootstrap de la stack
+(PKI + Garage + /etc/hosts) si tu pars de rien.
 
 ✅ **Critères succès A** : les 4 curl répondent 200, le mail de confirmation
 arrive dans smtp4dev, l'API rejette `Authorization: Bearer <token>` (401).
@@ -697,12 +701,17 @@ stateful sans interruption visible côté appli.
 
 | Outil | Usage |
 |---|---|
-| `make install` | Crée venv + installe dépendances |
-| `make test` | 78 tests unit + intégration |
-| `make compose-up` | Lance la stack locale |
-| `python scripts/gen_pki.py` | Génère la PKI dev (root + intermédiaire + serveur) |
+| `make install` | venv + dépendances |
+| `make test` | 78 tests pytest (9 unit + 69 integration) |
+| `make test-unit` / `make test-integration` | granularité, sans tout relancer |
+| `make compose-up` | Lance la stack locale (compose up -d --build --wait) |
+| `make compose-stack` | Bootstrap full : compose-up + PKI dev + Garage init + /etc/hosts |
+| `make test-live` | scripts/live_verify*.sh — 21 + 13 cases (stack doit déjà tourner) |
+| `make e2e` | compose-stack + test-live en une commande (~8 min) |
+| `make test-all` | pytest + live-verify (stack déjà up) |
+| `python scripts/gen_pki.py` | PKI dev (root + intermédiaire + serveur) — appelé par compose-stack |
 | `python scripts/fake_node.py <cmd>` | Simulateur firmware (provision/claim/run/mapping) |
-| `make k8s-validate` | Valide les overlays kustomize |
+| `make k8s-validate` | Valide les 3 overlays kustomize |
 | `docker compose logs vmq-authz \| grep vmq_authz_` | Trace les décisions d'autorisation |
 | `docker compose exec postgres psql -U rainmaker` | Inspection BDD |
 | `openssl verify -CAfile var/pki/ca-chain.pem <cert>` | Validation chaîne PKI |
