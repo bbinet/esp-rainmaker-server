@@ -127,10 +127,19 @@ services:
     command: ["python", "-m", "app.entrypoints.api"]
     environment:
       <<: *app-env
-    ports:
-      - "8000:8000"
+    # No host port mapping when replicated — NGINX is the single
+    # entry point. Direct access for tests is still available via
+    # `docker compose exec api curl localhost:8000` or via NGINX.
+    expose:
+      - "8000"
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
+    # K8s-equivalent: runAsNonRoot (uid 1000 baked into the image),
+    # readOnlyRootFilesystem (read_only=true) + emptyDir tmp.
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -140,10 +149,14 @@ services:
     command: ["python", "-m", "app.entrypoints.vmq_authz"]
     environment:
       <<: *app-env
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -155,6 +168,10 @@ services:
       <<: *app-env
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -166,9 +183,33 @@ services:
       <<: *app-env
     volumes:
       - ./var/pki:/etc/rainmaker/pki:ro
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  # ----- Production-like NGINX Ingress emulation -----
+  #
+  # In Kubernetes, three separate Ingress resources expose the same
+  # `api` Service on three hostnames with different TLS configs (mTLS
+  # only on `node.*`). Compose-side we get the same shape: one NGINX
+  # process listening on three ports with the per-host configs.
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "443:443"    # api.local
+      - "444:444"    # claim.local
+      - "445:445"    # node.local  (mTLS)
+    volumes:
+      - ./deploy/nginx/rainmaker.conf:/etc/nginx/nginx.conf:ro
+      - ./var/pki/nginx-chain.pem:/etc/nginx/certs/nginx-chain.pem:ro
+      - ./var/pki/nginx.key:/etc/nginx/certs/nginx.key:ro
+      - ./var/pki/ca-chain.pem:/etc/nginx/certs/ca-chain.pem:ro
+    depends_on:
+      - api
 
 volumes:
   pg_data:

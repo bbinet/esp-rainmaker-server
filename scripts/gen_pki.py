@@ -179,6 +179,65 @@ def main() -> None:
     _save_cert(out / "server.pem", server_cert)
     _save_key(out / "server.key", server_key)
 
+    # NGINX server cert (covers api.local, claim.local, node.local, localhost).
+    nginx_key = ec.generate_private_key(ec.SECP256R1())
+    nginx_subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "rainmaker-ingress")])
+    nginx_cert = (
+        x509.CertificateBuilder()
+        .subject_name(nginx_subject)
+        .issuer_name(inter_cert.subject)
+        .public_key(nginx_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=365 * 5))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=True,
+                data_encipherment=False,
+                key_agreement=True,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(
+            x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False
+        )
+        .add_extension(
+            x509.SubjectAlternativeName(
+                [
+                    x509.DNSName("api.local"),
+                    x509.DNSName("claim.local"),
+                    x509.DNSName("node.local"),
+                    x509.DNSName("localhost"),
+                    x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+                ]
+            ),
+            critical=False,
+        )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(nginx_key.public_key()), critical=False
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(inter_cert.public_key()),
+            critical=False,
+        )
+        .sign(inter_key, hashes.SHA256())
+    )
+    _save_cert(out / "nginx.pem", nginx_cert)
+    _save_key(out / "nginx.key", nginx_key)
+
+    # NGINX certs need to present the full chain to clients.
+    (out / "nginx-chain.pem").write_bytes(
+        nginx_cert.public_bytes(serialization.Encoding.PEM)
+        + inter_cert.public_bytes(serialization.Encoding.PEM)
+    )
+
     print(f"Generated {len(list(out.glob('*')))} PKI artifacts under {out.resolve()}")
     for name in [
         "ca-root.pem",
@@ -188,6 +247,9 @@ def main() -> None:
         "ca-chain.pem",
         "server.pem",
         "server.key",
+        "nginx.pem",
+        "nginx.key",
+        "nginx-chain.pem",
     ]:
         path = out / name
         print(f"  {path}  ({path.stat().st_size} bytes)")

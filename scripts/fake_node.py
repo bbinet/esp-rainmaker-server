@@ -54,6 +54,13 @@ def _api_base() -> str:
     return os.environ.get("FAKE_NODE_API", "http://localhost:8000")
 
 
+def _http_client(*, timeout: float = 10.0) -> httpx.Client:
+    """Build an httpx client respecting FAKE_NODE_CA_BUNDLE if set."""
+    ca = os.environ.get("FAKE_NODE_CA_BUNDLE")
+    verify: bool | str = ca if ca else True
+    return httpx.Client(timeout=timeout, verify=verify)
+
+
 def _mqtt_broker() -> tuple[str, int]:
     host = os.environ.get("FAKE_NODE_MQTT_HOST", "localhost")
     port = int(os.environ.get("FAKE_NODE_MQTT_PORT", "8883"))
@@ -108,10 +115,10 @@ def cmd_self_claim(args: argparse.Namespace) -> None:
     key = hmac_key_path.read_bytes()
     api = _api_base()
 
-    init = httpx.post(
+    client = _http_client()
+    init = client.post(
         f"{api}/claim/initiate",
         json={"mac_addr": args.mac, "platform": args.platform},
-        timeout=10,
     )
     if init.status_code != 200:
         sys.exit(f"initiate failed: {init.status_code} {init.text}")
@@ -123,7 +130,7 @@ def cmd_self_claim(args: argparse.Namespace) -> None:
     csr_pem, device_key = _generate_csr(node_id)
 
     proof = hmac.new(key, challenge, hashlib.sha256).digest()
-    verify = httpx.post(
+    verify = client.post(
         f"{api}/claim/verify",
         json={
             "auth_id": auth_id,
@@ -131,7 +138,6 @@ def cmd_self_claim(args: argparse.Namespace) -> None:
             "csr": csr_pem.decode(),
             "send_mqtt_host": True,
         },
-        timeout=10,
     )
     if verify.status_code != 200:
         sys.exit(f"verify failed: {verify.status_code} {verify.text}")

@@ -14,6 +14,8 @@ MQTT 3.1.1 is forced because:
 from __future__ import annotations
 
 import asyncio
+import os
+import socket
 
 import aiomqtt
 import paho.mqtt.client as paho
@@ -29,6 +31,14 @@ async def run() -> None:
     logger = get_logger(__name__)
     settings = get_settings()
 
+    # Unique client id per replica (hostname-based) so VerneMQ keeps
+    # distinct sessions. Shared subscription opt-in via env so a single
+    # replica still uses the plain form (and gets every message).
+    base_id = f"rainmaker-backend-ingestor-{socket.gethostname()}"
+    use_shared = os.environ.get("RM_MQTT_SHARED_SUB", "true").lower() == "true"
+    share_group = os.environ.get("RM_MQTT_SHARED_SUB_GROUP", "ingestor")
+    topic = f"$share/{share_group}/node/+/#" if use_shared else "node/+/#"
+
     while True:
         try:
             async with aiomqtt.Client(
@@ -36,17 +46,18 @@ async def run() -> None:
                 port=settings.mqtt_broker_port,
                 username=settings.mqtt_internal_user,
                 password=settings.mqtt_internal_password.get_secret_value(),
-                identifier="rainmaker-backend-ingestor",
+                identifier=base_id,
                 clean_session=False,
                 protocol=paho.MQTTv311,  # type: ignore[arg-type]
             ) as client:
-                # `node/+/#` covers any sub-suffix depth: `node/<id>/config`,
-                # `node/<id>/params/local`, `node/<id>/params/local/init`,
-                # `node/<id>/diagnostics/from-node`, etc.
-                await client.subscribe("node/+/#", qos=1)
+                # Shared subscription distributes messages across all
+                # ingestor replicas registered under the same group.
+                await client.subscribe(topic, qos=1)
                 logger.info(
                     "mqtt_ingestor_connected",
                     broker=f"{settings.mqtt_broker_host}:{settings.mqtt_broker_port}",
+                    topic=topic,
+                    client_id=base_id,
                 )
                 async for message in client.messages:
                     async with AsyncSessionLocal() as session:
