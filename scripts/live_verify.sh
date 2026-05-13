@@ -34,6 +34,22 @@ RESULT() {
 API=${API:-https://api.local}
 CA=${CA:-var/pki/ca-chain.pem}
 
+# fake_node.py needs its own routing knobs — it doesn't read API/CA.
+# Defaults match the NGINX-fronted compose stack (claim on :444, MQTT
+# on :8883). Override these vars to point at a remote deployment.
+export FAKE_NODE_API=${FAKE_NODE_API:-https://claim.local:444}
+export FAKE_NODE_CA_BUNDLE=${FAKE_NODE_CA_BUNDLE:-$CA}
+export FAKE_NODE_MQTT_HOST=${FAKE_NODE_MQTT_HOST:-localhost}
+export FAKE_NODE_MQTT_PORT=${FAKE_NODE_MQTT_PORT:-8883}
+
+# Ensure /etc/hosts maps the Ingress hostnames to localhost so curl and
+# fake_node.py both reach NGINX without --resolve everywhere. Idempotent.
+if ! grep -q "api.local claim.local node.local" /etc/hosts 2>/dev/null; then
+  echo "127.0.0.1 api.local claim.local node.local" | sudo tee -a /etc/hosts >/dev/null 2>&1 \
+    || echo "127.0.0.1 api.local claim.local node.local" >> /etc/hosts 2>/dev/null \
+    || echo "warning: could not update /etc/hosts; curl --resolve still works"
+fi
+
 # curl wrapper: when API is https, add --cacert + --resolve so we don't
 # depend on /etc/hosts entries; transparent otherwise.
 CURL() {
@@ -105,9 +121,16 @@ HTTP=$(CURL -o /dev/null -w "%{http_code}" \
 RESULT "$HTTP" "200" "T2.4c — Alice can read her own node"
 
 # T2.5 / T2.6 — revoked cert and foreign-topic publish via MQTT
-if [[ -x scripts/fake_node.py ]] && [[ -d var/pki ]]; then
-  .venv/bin/python scripts/fake_node.py provision-key 7CDFA1LIVE01 ESP32S3 >/dev/null 2>&1 || true
-  .venv/bin/python scripts/fake_node.py self-claim --mac 7CDFA1LIVE01 --platform ESP32S3 >/dev/null 2>&1 || true
+if [[ -f scripts/fake_node.py ]] && [[ -d var/pki ]]; then
+  # Don't swallow self-claim errors silently — a missing cert means
+  # the next probes can't even open a connection (RES='' / no log).
+  if ! .venv/bin/python scripts/fake_node.py provision-key 7CDFA1LIVE01 ESP32S3 >/tmp/provision-key.log 2>&1; then
+    echo "  ! provision-key failed (see /tmp/provision-key.log)"
+  fi
+  if ! .venv/bin/python scripts/fake_node.py self-claim --mac 7CDFA1LIVE01 --platform ESP32S3 >/tmp/self-claim.log 2>&1; then
+    echo "  ! self-claim failed; T2.5/T2.6 will be skipped"
+    cat /tmp/self-claim.log
+  fi
   REV_NODE="7cdfa1live01"
 
   # Mark cert revoked

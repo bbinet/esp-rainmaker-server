@@ -154,7 +154,7 @@ jobs:
 
           echo "::group::node_certificates DB state"
           docker compose exec -T postgres psql -U rainmaker -c \
-            "SELECT node_id, encode(substring(serial::bytea, 1, 8), 'hex') AS serial_prefix, revoked, issued_at FROM node_certificates ORDER BY issued_at;" \
+            "SELECT node_id, substring(serial, 1, 16) AS serial_prefix, revoked, created_at FROM node_certificates ORDER BY created_at;" \
             2>&1 || true
           echo "::endgroup::"
 
