@@ -146,7 +146,7 @@ services:
 
   # ----- Postgres logical backups -----
   postgres-backup:
-    image: ${RM_IMAGE_PG_BACKUP:-ghcr.io/bbinet/postgres-backup-local:16}
+    image: ${RM_IMAGE_PG_BACKUP:-ghcr.io/bbinet/esp-rainmaker-server/postgres-backup-local:16}
     <<: [*restart, *logging]
     environment:
       POSTGRES_HOST: postgres
@@ -165,7 +165,7 @@ services:
 
   # ----- Garage snapshot job (optional, via shell cron container) -----
   garage-backup:
-    image: ${RM_IMAGE_ALPINE:-ghcr.io/bbinet/alpine:3.20}
+    image: ${RM_IMAGE_ALPINE:-ghcr.io/bbinet/esp-rainmaker-server/alpine:3.20}
     <<: [*restart, *logging]
     command: >
       sh -c 'apk add --no-cache rclone tini >/dev/null;

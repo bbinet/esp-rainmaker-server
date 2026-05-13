@@ -255,7 +255,14 @@ async def test_user_tsdata_aggregate_avg(client_with_db, db) -> None:
 
     from sqlalchemy import text
 
+    # Anchor the 5 points to a deterministic timestamp 2h in the past,
+    # aligned to HH:30:00 so the entire span sits well inside a single
+    # 1h time_bucket. The previous "1h bucket" attempt still split
+    # 1+4 across the boundary when `now` happened to be at HH:0X:XX
+    # (~7% of runs); since the assertion uses simple mean of bucket
+    # means, an uneven split yields (10 + 35)/2 = 22.5 != 30.
     now = datetime.now(UTC)
+    anchor = (now - timedelta(hours=2)).replace(minute=30, second=0, microsecond=0)
     for i, value in enumerate([10, 20, 30, 40, 50]):
         await db.execute(
             text(
@@ -263,7 +270,7 @@ async def test_user_tsdata_aggregate_avg(client_with_db, db) -> None:
                 "VALUES (:ts, :nid, :d, :p, 'int', :v)"
             ),
             {
-                "ts": now - timedelta(minutes=4 - i),
+                "ts": anchor + timedelta(seconds=i),
                 "nid": node_id,
                 "d": "Light",
                 "p": "brightness",
@@ -278,20 +285,14 @@ async def test_user_tsdata_aggregate_avg(client_with_db, db) -> None:
         params={
             "node_id": node_id,
             "param": "Light.brightness",
-            "start_time": int((now - timedelta(hours=1)).timestamp()),
-            "end_time": int(now.timestamp()) + 60,
+            "start_time": int((anchor - timedelta(minutes=30)).timestamp()),
+            "end_time": int((anchor + timedelta(minutes=30)).timestamp()),
             "aggregate": "avg",
-            # 1h bucket so all 5 points (spanning 5 minutes) land in
-            # the same bucket regardless of where `now` sits inside
-            # the hour — avoids the boundary-flake at 10m bucket size.
             "aggregate_interval": "1h",
         },
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert len(body["records"]) >= 1
-    # Average of [10..50] = 30. With a 1h bucket the 5 points span at
-    # most one boundary if `now` is in the first 4 minutes of the
-    # hour; in that case there are 2 records, weighted-average still 30.
-    total = sum(r["v"] for r in body["records"]) / len(body["records"])
-    assert abs(total - 30) < 5  # tolerate any bucket split
+    # All 5 points within seconds of HH:30:00 → single 1h bucket.
+    assert len(body["records"]) == 1
+    assert body["records"][0]["v"] == 30  # mean of [10, 20, 30, 40, 50]
