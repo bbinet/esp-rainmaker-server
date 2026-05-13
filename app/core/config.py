@@ -73,7 +73,7 @@ class Settings(BaseSettings):
 
     @property
     def sync_database_url(self) -> str:
-        return str(self.database_url).replace("+asyncpg", "")
+        return str(self.database_url).replace("+asyncpg", "+psycopg")
 
 
 @lru_cache(maxsize=1)

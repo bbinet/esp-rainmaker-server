@@ -45,6 +45,7 @@ dev = [
     "types-passlib",
     "httpx>=0.28",
     "respx>=0.21",
+    "testcontainers[postgres]>=4.8",
 ]
 
 [build-system]
