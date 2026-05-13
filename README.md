@@ -132,19 +132,18 @@ that you provide. The intermediate cert + key + root cert are loaded from the
 Kubernetes Secret `rainmaker-pki-ca-intermediate`. The intermediate is what
 signs CSRs in the `/claim/verify` flow; the root never lives in the cluster.
 
-## Deployment to Kubernetes
+## Deployment targets
 
-```bash
-# Render and validate the dev overlay
-make k8s-validate
+| Target | Use case | Manifests | Doc |
+|---|---|---|---|
+| **Docker Compose** (dev) | Local development, smoke tests | `docker-compose.yml` | [`deploy/compose/README.md`](deploy/compose/README.md) |
+| **Docker Compose** (prod) | Single-host production (VPS / NAS) — adds restart policies, resource limits, log rotation, Postgres + Garage backups, named TLS cert volumes | `docker-compose.yml` + `deploy/compose/docker-compose.prod.yml` | [`deploy/compose/README.md`](deploy/compose/README.md) |
+| **Kubernetes** | Multi-host production, auto-scaling, NetworkPolicies, automated TLS via cert-manager | `deploy/k8s/{base,overlays/*}` | [`deploy/k8s/README.md`](deploy/k8s/README.md) |
 
-# Apply (after populating real Secrets in your environment)
-kubectl apply -k deploy/k8s/overlays/dev
-```
+Quick start for each is in the linked README. As a rule of thumb:
 
-cert-manager + Let's Encrypt is assumed for server TLS (`ClusterIssuer` named
-`letsencrypt-prod`). The `node.*` Ingress is configured for mTLS verify against
-the trust anchor in `rainmaker-pki-ca-intermediate`.
+- ≤ 100 devices + 1 admin → **Compose**
+- ≥ 1000 devices, multi-team, need auto-scaling → **Kubernetes**
 
 ## Roadmap
 
