@@ -486,30 +486,58 @@ Surface contract = `user/nodes/mapping*`.
 
 ---
 
-## 7. Modèle de données prévu
+## 7. Modèle de données
 
-Tables SQLAlchemy partiellement créées sous `app/models/` :
+Tables SQLAlchemy sous `app/models/`, créées par les 5 migrations Alembic
+`alembic/versions/0001..0005_*.py`.
 
-- `users` — auth, MFA, custom_data JSONB
-- `refresh_tokens` — sessions, révocation par jti
-- `nodes` — registre (node_id PK, online, last_seen, tags, metadata)
-- `node_certificates` — certs signés par CA intermédiaire (serial PK, CN, revoked)
+### Présentes (phases 0-8)
+
+**Auth & user (`app/models/user.py`, migration `0001`)**
+- `users` — id (uuid), user_name (uniq), email, password_hash, phone_number,
+  full_name, status (`unconfirmed|confirmed|disabled`), is_super_admin, is_admin,
+  mfa_enabled, custom_data (JSON), confirm_code/_exp, reset_code/_exp,
+  login_otp/_exp, last_login_at, created_at, updated_at
+- `refresh_tokens` — id, user_id (FK), jti (uniq), expires_at — révocation par jti
+
+**Devices (`app/models/node.py` + `device_provisioning.py`, migrations `0001`+`0002`)**
+- `nodes` — node_id (PK), registration_ts, online, last_seen_at, tags (JSON), metadata
+- `node_attributes` — (node_id, name) → value
 - `node_configs` — schéma devices/services/params publié par le node
-- `node_params_shadow` — état courant (mirroir de `params/local`)
-- `node_attributes`
-- `user_node_mappings` — (user_id, node_id) accès primary/secondary
-- `mapping_challenges` — flux secret_key + challenge-response
+- `node_params_shadow` — état courant (miroir `params/local`)
+- `node_certificates` — serial (PK), cn, pem, revoked
+- `device_provisioning` — pre-claim (HMAC self-claim ou JWT assisted)
+- `claim_challenges` — flux challenge-response self-claim
 
-À ajouter au fur et à mesure :
-- `node_sharing`, `sharing_requests`
-- `groups` (arborescent, parent_id), `group_nodes`
-- `group_sharing`, `group_sharing_requests`
-- `ota_images`, `ota_jobs`, `ota_job_nodes`
-- `automations`, `automation_runs`
-- `tsdata` (**hypertable Timescale**)
-- `procrastinate_*` (tables natives de la lib)
-- `rate_limit_buckets`, `revoked_tokens_cache`
-- `push_endpoints`
+**User ↔ Node mapping (`app/models/user_node.py`, migration `0001`)**
+- `user_node_mappings` — (user_id, node_id), role (primary|secondary), `primary` bool
+- `mapping_challenges` — flux secret_key (MQTT) + chal-resp (HTTP)
+
+**Sharing & groups (`app/models/sharing.py`, migration `0004`)**
+- `node_sharing` — (node_id, user_id) avec permissions
+- `node_sharing_requests` — pending/accepted/declined
+- `node_groups` — id, user_id, name, parent_id (arborescent), type, mutually_exclusive
+- `node_group_nodes` — N:M (group_id, node_id)
+
+**OTA (`app/models/ota.py`, migration `0003`)**
+- `ota_images` — image_id, version, file_size, md5, s3_key
+- `ota_jobs` — job_id, image_id, status, scheduling
+- `ota_job_nodes` — N:M (job_id, node_id) + per-node status
+
+**Automations & time-series (`app/models/automation.py`, migration `0005`)**
+- `automations` — id, user_id, name, enabled, event_operator, events (JSON),
+  actions (JSON), metadata
+- `tsdata` — **hypertable Timescale** (ts, node_id, device_name, param_name,
+  data_type, value_int/value_float/value_text/value_json) avec
+  `create_hypertable('tsdata', 'ts', chunk_time_interval=>'1 day')`
+
+### Hors-scope MVP (non créées)
+
+- `procrastinate_*` — la lib crée ses tables au premier `procrastinate schema --apply` ;
+  le worker stub actuel ne les touche pas
+- `rate_limit_buckets`, `revoked_tokens_cache` — applicatif au-dessus du JWT TTL pour
+  l'instant ; à matérialiser si on ajoute du throttling agressif
+- `push_endpoints` — endpoints FCM/APNs : déposés Phase 9
 
 ---
 
@@ -528,84 +556,173 @@ firmware ESP).
 - `broker` — VerneMQ via testcontainers ou broker Python `amqtt` in-process
 - `garage` — Garage ou MinIO via testcontainers (S3 API identique)
 
-### Scénarios E2E par phase
+### Scénarios E2E par phase — toutes implémentées ✅
 
-| Phase | Scénarios clés |
-|---|---|
-| 1 — Auth | signup→confirm→login→refresh complet ; JWT brut accepté, Bearer rejeté ; logout révoque refresh |
-| 2 — Claiming | self-claim HMAC → cert PEM avec CN=node_id ; cert signé par notre CA intermédiaire ; cert autorise MQTT seulement sur `node/<cn>/#` ; cert révoqué → connexion MQTT refusée |
-| 3 — Node API mTLS | `PUT /v1/node/config` persiste ; otafetch retourne job ; rejet si pas de cert client |
-| 4 — mqtt-ingestor | topic config persiste ; topic user/mapping match challenge ; params/local update shadow ; on_client_online/offline mettent à jour `nodes.online` |
-| 5 — App nodes | filtres `node_details`/`config`/`params`/`connectivity` ; PUT params publie sur `params/remote` ; echo `params/local` mis à jour ; user ne voit pas les nodes d'un autre |
-| 6 — OTA | upload signed URL Garage ; job → `otaurl` publié ; status agrégé ; user peut trigger OTA pour son node |
-| 7 — Sharing/groups | share grants secondary access ; revoke bloque immédiatement ; group hiérarchie + mutually_exclusive ; group sharing propage aux members |
-| 8 — Automations/ts | param-change trigger → action exécutée ; cron trigger fire ; tsdata avec agrégation `time_bucket` Timescale |
+| Phase | Scénarios clés | Statut | Tests |
+|---|---|---|---|
+| 1 — Auth | signup→confirm→login→refresh complet ; JWT brut accepté, Bearer rejeté ; logout révoque refresh | ✅ | `tests/integration/test_auth.py` |
+| 2 — Claiming | self-claim HMAC → cert PEM avec CN=node_id ; cert signé par notre CA intermédiaire ; cert autorise MQTT seulement sur `node/<cn>/#` ; cert révoqué → connexion MQTT refusée | ✅ | `tests/integration/test_claiming.py` + `live_verify.sh` T2.5 |
+| 3 — Node API mTLS | `PUT /v1/node/config` persiste ; otafetch retourne job ; rejet si pas de cert client | ✅ | `tests/integration/test_node_api.py` + `live_verify_prod_like.sh` E.1.4 |
+| 4 — mqtt-ingestor | topic config persiste ; topic user/mapping match challenge ; params/local update shadow ; on_client_online/offline mettent à jour `nodes.online` | ✅ | `tests/integration/test_mqtt_ingestor.py` |
+| 5 — App nodes | filtres `node_details`/`config`/`params`/`connectivity` ; PUT params publie sur `params/remote` ; echo `params/local` mis à jour ; user ne voit pas les nodes d'un autre | ✅ | `tests/integration/test_user_nodes.py` + `live_verify.sh` T2.4 |
+| 6 — OTA | upload signed URL Garage ; job → `otaurl` publié ; status agrégé ; user peut trigger OTA pour son node | ✅ | `tests/integration/test_ota.py` (round-trip Garage validé en commit `ae7c4a0`) |
+| 7 — Sharing/groups | share grants secondary access ; revoke bloque immédiatement ; group hiérarchie + mutually_exclusive ; group sharing propage aux members | ✅ | `tests/integration/test_sharing.py` + `live_verify.sh` T7.x |
+| 8 — Automations/ts | param-change trigger → action exécutée ; cron trigger fire ; tsdata avec agrégation `time_bucket` Timescale | ⚠️ partiel | `tests/integration/test_automations_tsdata.py` + `live_verify.sh` T9.x — CRUD OK, runtime evaluator absent (worker stub) |
+
+**Score global** : 78 tests (9 unit + 69 integration), 21 live-verify cases (Tests
+#2/#7/#9), 13 prod-like cases (NGINX mTLS + scale + read-only fs) — 112 cases verts.
+
+### Gap restant Phase 8
+
+Le **runtime evaluator** d'automations est identifié comme manquant (cf. note
+T9.5 dans `live_verify.sh`). La CRUD surface fonctionne (POST/GET/PUT/DELETE),
+mais aucun worker ne consomme les changements de shadow pour déclencher les
+actions. Pour le faire : task procrastinate qui écoute `params/local` (LISTEN/NOTIFY
+ou 2e consumer MQTT), évalue le JSONB events, publie sur `params/remote`. Hors
+MVP.
 
 ### Validation manuelle complémentaire
 
 - `scripts/fake_node.py` — simulateur paho-mqtt qui fait un cycle complet
-- Appli RN réelle avec QR config pointant vers le déploiement dev
-- ESP32 physique flashé `esp-rainmaker` (optionnel mais idéal)
+  (provision-key, self-claim, assisted-claim, otafetch mTLS) ; utilisé par les
+  2 scripts `live_verify*.sh`
+- `scripts/live_verify.sh` — 21 cases couvrant Tests #2/#7/#9 contre la stack compose
+- `scripts/live_verify_prod_like.sh` — 13 cases NGINX-fronted (mTLS Ingress
+  emulation, multi-replica scale, read-only fs)
+- Appli RN réelle avec QR config pointant vers le déploiement dev — à faire
+- ESP32 physique flashé `esp-rainmaker` — à faire (Palier D du `docs/TEST_PLAN.md`)
 
 ---
 
-## 9. État actuel du code (Phase 0 en cours)
+## 9. État actuel du code — MVP atteint (phases 0-8)
 
-### Déjà créé
+### Application Python (`app/`, 71 fichiers .py)
 
 ```
 app/
 ├── __init__.py                # __version__
-├── main.py                    # FastAPI app + lifespan + exception handler
+├── main.py                    # FastAPI factory + lifespan + exception handler
 ├── core/
 │   ├── config.py              # pydantic-settings (env RM_*)
-│   ├── errors.py              # RainmakerError + ErrorCode
+│   ├── errors.py              # RainmakerError + ErrorCode (format SDK TS)
 │   ├── logging.py             # structlog JSON
-│   └── security.py            # JWT (HS256) + bcrypt + secret generation
+│   └── security.py            # JWT HS256 + bcrypt + secret generation
 ├── db/
 │   ├── base.py                # DeclarativeBase + naming convention + TimestampMixin
 │   └── session.py             # AsyncSessionLocal + get_db()
-├── models/
-│   ├── __init__.py            # registre tables
-│   ├── user.py                # User + RefreshToken
-│   ├── node.py                # Node + NodeAttribute + NodeConfig + NodeParamsShadow + NodeCertificate
-│   └── user_node.py           # UserNodeMapping + MappingChallenge
-├── schemas/
-│   └── common.py              # HealthResponse, ApiVersionsResponse, SuccessResponse, FailureResponse
-├── api/v1/
-│   ├── router.py              # api_router + v1_router
-│   ├── routes/
-│   │   ├── health.py          # /healthz, /readyz
-│   │   └── meta.py            # /v1/apiversions, /v1/mqtt_host
-│   └── deps/                  # (vide pour l'instant)
-└── entrypoints/
+├── models/                    # SQLAlchemy 2 typed (cf §7)
+│   ├── user.py, node.py, user_node.py, device_provisioning.py
+│   ├── sharing.py, ota.py, automation.py
+├── schemas/                   # pydantic v2
+│   ├── auth.py, user.py, common.py
+├── pki/
+│   └── ca.py                  # CA chain + CSR signing (Phase 2)
+├── mqtt/
+│   ├── publisher.py           # backend → device publish (params/remote, otaurl)
+│   ├── router.py              # ingestor topic dispatch
+│   └── topics.py              # topic constants
+├── services/                  # business logic
+│   ├── auth.py, access.py     # authn + RBAC
+│   ├── claim.py, mapping.py   # provisioning & user↔node mapping
+│   ├── node.py                # nodes CRUD + shadow merge
+│   ├── sharing.py, groups.py  # Phase 7
+│   ├── ota.py, storage.py     # Phase 6 + Garage S3
+│   ├── automations.py, tsdata.py  # Phase 8
+│   ├── vmq_authz.py           # 4 webhooks VerneMQ
+│   └── email.py               # smtp4dev / real SMTP
+├── api/
+│   ├── internal/vmq_authz.py  # /auth/on_register|publish|subscribe + on_client_offline
+│   └── v1/
+│       ├── router.py
+│       ├── deps/
+│       │   ├── auth.py        # JWT brut (rejette Bearer)
+│       │   ├── admin.py       # is_admin / is_super_admin
+│       │   ├── mtls.py        # X-SSL-Client-CN extraction
+│       │   └── db.py          # async session
+│       └── routes/
+│           ├── health.py, meta.py, auth.py, user.py
+│           ├── claim.py, node.py (mTLS), user_nodes.py
+│           ├── sharing.py, groups.py
+│           ├── ota_admin.py, ota_user.py
+│           ├── automations.py, tsdata.py
+└── entrypoints/               # 4 commands, image Docker unique
     ├── api.py                 # uvicorn → app.main:app
-    ├── vmq_authz.py           # FastAPI minimal avec stubs hooks
-    ├── mqtt_ingestor.py       # stub keepalive
-    └── worker.py              # stub keepalive
-
-pyproject.toml                 # toutes les deps + ruff + mypy + pytest config
-
-tests/
-├── __init__.py
-└── unit/__init__.py
+    ├── vmq_authz.py           # FastAPI minimal port 8001
+    ├── mqtt_ingestor.py       # aiomqtt shared-subscription
+    └── worker.py              # procrastinate stub (runtime automations TBD)
 ```
 
-### À faire pour finir Phase 0
+### Migrations (`alembic/versions/`)
 
-- [ ] `tests/conftest.py` — fixtures `db`, `fake_app`, `fake_node`, `garage` skeleton
-- [ ] `tests/unit/test_smoke.py` — premier test (healthz répond 200)
-- [ ] `tests/unit/test_security.py` — hash/verify password, JWT mint/decode
-- [ ] `alembic.ini` + `alembic/env.py` + migration `0001_init.py` (toutes tables Phase 0)
-- [ ] `deploy/docker/Dockerfile` — multi-stage uv → distroless
-- [ ] `deploy/vernemq/{vernemq.conf,acl.config,webhooks.config}`
-- [ ] `deploy/garage/garage.toml`
-- [ ] `deploy/k8s/base/{api,vmq-authz,mqtt-ingestor,worker,vernemq,postgres,garage,ingress,migrations-job,cert-issuers}/`
-- [ ] `deploy/k8s/overlays/{dev,staging,prod}/`
-- [ ] `docker-compose.yml` — postgres+timescale, garage, vernemq, smtp4dev, api, mqtt-ingestor, worker, vmq-authz
-- [ ] `Makefile` — `dev`, `migrate`, `test`, `lint`, `typecheck`, `image`, `e2e`
-- [ ] `README.md` — architecture, quickstart, déploiement
-- [ ] `.github/workflows/ci.yml` — ruff + mypy + pytest + build
+- `0001_init.py` — users, refresh_tokens, nodes, node_attributes, node_configs,
+  node_params_shadow, node_certificates, user_node_mappings, mapping_challenges
+- `0002_claiming.py` — device_provisioning, claim_challenges
+- `0003_ota.py` — ota_images, ota_jobs, ota_job_nodes
+- `0004_sharing_groups.py` — node_sharing, node_sharing_requests, node_groups,
+  node_group_nodes
+- `0005_automations_tsdata.py` — automations + tsdata **hypertable Timescale**
+
+### Tests (`tests/`)
+
+- `tests/unit/` — 9 cases : smoke (healthz, apiversions, mqtt_host), security
+  (hash/verify password, JWT mint/decode round-trip + tampered/expired)
+- `tests/integration/` — 69 cases via testcontainers Postgres+TimescaleDB :
+  test_auth, test_claiming, test_node_api, test_mqtt_ingestor, test_user_nodes,
+  test_ota, test_sharing, test_automations_tsdata
+- `tests/conftest.py` — fixtures `client`, `client_with_db`, `db`, `migrated_db`,
+  `pg_dsn` (testcontainers session-scoped)
+
+### Scripts (`scripts/`)
+
+- `gen_pki.py` — root + intermediate + server certs pour dev
+- `init_garage.sh` — bootstrap one-shot layout + key + bucket Garage
+- `fake_node.py` — simulateur firmware paho-mqtt (`provision-key`, `self-claim`,
+  `assisted-claim`, `otafetch`)
+- `live_verify.sh` — 21 cases (Tests #2/#7/#9 contre compose dev)
+- `live_verify_prod_like.sh` — 13 cases (NGINX mTLS + scale + read-only fs)
+
+### Déploiement
+
+- `docker-compose.yml` — dev stack (postgres+timescale, garage, vernemq, smtp4dev,
+  nginx, api, vmq-authz, mqtt-ingestor, worker) avec images via miroir
+  `ghcr.io/bbinet/esp-rainmaker-server/*`
+- `deploy/compose/docker-compose.prod.yml` — overlay prod (restart policies,
+  resource limits, log rotation, postgres-backup + garage-backup)
+- `deploy/nginx/rainmaker.conf` — 3 vhosts (api.local 443, claim.local 444,
+  node.local 445 avec mTLS verify)
+- `deploy/docker/Dockerfile` — multi-stage, base `python:3.11-slim-trixie`,
+  uid 1000 non-root, 4 entrypoints (CMD override par service)
+- `deploy/garage/garage.toml`, `deploy/vernemq/vernemq.conf`
+- `deploy/k8s/` — Kustomize base (api, vmq-authz, mqtt-ingestor, worker,
+  postgres StatefulSet, garage StatefulSet, vernemq StatefulSet, ingress 3
+  vhosts, NetworkPolicies, migrations Job, HPA) + overlays `dev/staging/prod`
+
+### CI/CD (`.github/workflows/`)
+
+- `ci.yml` — `lint-type-unit` (container Trixie : ruff + mypy strict + 9 unit
+  tests) + `integration` (host : 69 testcontainers tests) + `docker-build`
+  (image multi-stage) ; `live-verify` job en cours d'ajout (PR #3)
+- `publish.yml` — sur tag `v*.*.*` : build multi-arch (amd64 + arm64), push
+  `ghcr.io/bbinet/esp-rainmaker-server:<tag>` + SBOM + provenance
+- `mirror.yml` — cron weekly + dispatch : retag 7 images Docker Hub vers
+  `ghcr.io/bbinet/esp-rainmaker-server/*` pour éviter le rate-limit DH
+
+### Documentation
+
+- `README.md` — entrée projet, quickstart, deployment targets table
+- `docs/REFERENCE.md` — ce document
+- `docs/TEST_PLAN.md` — 6 paliers A→F (A+B validés)
+- `deploy/compose/README.md` — déploiement single-host
+- `deploy/k8s/README.md` — déploiement multi-host
+
+### Hors MVP (à faire après)
+
+- Phase 9 push notifications (FCM v1 + APNs HTTP/2)
+- Runtime evaluator des automations (cf §8 gap T9.5)
+- OAuth tiers (`/authorize` + `/token`)
+- Admin / super-admin endpoints
+- Matter, video streaming, `assume_role` AWS STS
+- Console admin web
 
 ---
 
