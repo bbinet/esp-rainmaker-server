@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vernemq
+  labels:
+    app.kubernetes.io/name: vernemq
+spec:
+  serviceName: vernemq
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vernemq
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vernemq
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vernemq
+          image: vernemq/vernemq:2.0.1
+          ports:
+            - name: mqtt-tls
+              containerPort: 8883
+            - name: mqtt-wss
+              containerPort: 8084
+            - name: http
+              containerPort: 8888
+          env:
+            - name: DOCKER_VERNEMQ_ACCEPT_EULA
+              value: "yes"
+            - name: DOCKER_VERNEMQ_DISCOVERY_KUBERNETES
+              value: "1"
+            - name: DOCKER_VERNEMQ_KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DOCKER_VERNEMQ_KUBERNETES_LABEL_SELECTOR
+              value: "app.kubernetes.io/name=vernemq"
+          volumeMounts:
+            - name: data
+              mountPath: /vernemq/data
+            - name: config
+              mountPath: /vernemq/etc/vernemq.conf
+              subPath: vernemq.conf
+              readOnly: true
+            - name: certs
+              mountPath: /etc/vernemq/certs
+              readOnly: true
+          livenessProbe:
+            tcpSocket:
+              port: mqtt-tls
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: mqtt-tls
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: vernemq-config
+        - name: certs
+          secret:
+            secretName: rainmaker-pki-ca-intermediate
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

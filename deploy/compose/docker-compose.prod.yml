@@ -1,0 +1,196 @@
+# Production overlay for the compose stack.
+#
+# Layered on top of the dev compose at the repo root:
+#
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f deploy/compose/docker-compose.prod.yml \
+#     --env-file deploy/compose/.env.prod \
+#     up -d
+#
+# Adds:
+#   - Restart policies (unless-stopped) so containers come back after a
+#     reboot or crash.
+#   - Resource limits (cpus / memory) sized for a small VPS (4 vCPU, 8 GB).
+#   - JSON-file log rotation (10 MB × 5 = 50 MB max per container).
+#   - Postgres logical backups via prodrigestivill/postgres-backup-local
+#     (daily snapshots kept for 30 days, weekly for 4 weeks, monthly forever).
+#   - Garage snapshot job using the official garage CLI on cron.
+#   - Replaces var/pki bind mounts with a `pki_data` volume so the dev
+#     `var/pki/` directory isn't required on the host.
+#
+# Cert provisioning options (see deploy/compose/README.md):
+#   1. Bring-your-own  — drop letsencrypt-issued certs into the
+#                        `nginx_certs` volume.
+#   2. certbot sidecar — uncomment the `certbot` service below.
+#   3. Switch to Caddy or Traefik — see the README's "Reverse proxy
+#                                    alternatives" section.
+
+name: rainmaker
+
+x-default-restart: &restart
+  restart: unless-stopped
+
+x-app-prod-env: &app-prod-env
+  RM_ENV: prod
+  RM_DEBUG: "false"
+  RM_LOG_JSON: "true"
+  RM_LOG_LEVEL: INFO
+  RM_CORS_ALLOW_ORIGINS: ${RM_CORS_ALLOW_ORIGINS:-https://app.example.com}
+
+x-default-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  # smtp4dev is a dev-only catch-all SMTP UI. In prod, mail goes to a
+  # real provider via RM_SMTP_HOST. We park the service behind a
+  # profile that's never activated so it doesn't get started.
+  smtp4dev:
+    profiles: ["dev-only"]
+
+  postgres:
+    <<: [*restart, *logging]
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          memory: 512M
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?must be set for prod}
+
+  garage:
+    <<: [*restart, *logging]
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  vernemq:
+    <<: [*restart, *logging]
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+
+  api:
+    <<: [*restart, *logging]
+    environment:
+      <<: *app-prod-env
+      RM_SECRET_KEY: ${RM_SECRET_KEY:?must be set for prod}
+      RM_DATABASE_URL: ${RM_DATABASE_URL}
+      RM_FEATURE_S3_REAL: "true"
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  vmq-authz:
+    <<: [*restart, *logging]
+    environment:
+      <<: *app-prod-env
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  mqtt-ingestor:
+    <<: [*restart, *logging]
+    environment:
+      <<: *app-prod-env
+      RM_MQTT_SHARED_SUB: "true"
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  worker:
+    <<: [*restart, *logging]
+    environment:
+      <<: *app-prod-env
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  nginx:
+    <<: [*restart, *logging]
+    volumes:
+      # Override the dev bind mounts with named volumes — operators
+      # populate `pki_data` and `nginx_certs` via initial bootstrap
+      # (see deploy/compose/README.md).
+      - ./deploy/nginx/rainmaker.conf:/etc/nginx/nginx.conf:ro
+      - nginx_certs:/etc/nginx/certs:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
+  # ----- Postgres logical backups -----
+  postgres-backup:
+    image: ${RM_IMAGE_PG_BACKUP:-ghcr.io/bbinet/postgres-backup-local:16}
+    <<: [*restart, *logging]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-rainmaker}
+      POSTGRES_USER: ${POSTGRES_USER:-rainmaker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?must be set for prod}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: "30"
+      BACKUP_KEEP_WEEKS: "4"
+      BACKUP_KEEP_MONTHS: "12"
+      HEALTHCHECK_PORT: "8080"
+    volumes:
+      - pg_backups:/backups
+    depends_on:
+      - postgres
+
+  # ----- Garage snapshot job (optional, via shell cron container) -----
+  garage-backup:
+    image: ${RM_IMAGE_ALPINE:-ghcr.io/bbinet/alpine:3.20}
+    <<: [*restart, *logging]
+    command: >
+      sh -c 'apk add --no-cache rclone tini >/dev/null;
+             while true; do
+               TS=$$(date -u +%Y%m%dT%H%M%SZ);
+               echo "[$$TS] garage snapshot starting";
+               rclone --config /etc/rclone.conf sync :s3:rainmaker-ota
+                      /backups/$$TS/rainmaker-ota 2>&1 | tail -5;
+               find /backups -mindepth 1 -maxdepth 1 -type d -mtime +30 -exec rm -rf {} +;
+               sleep 86400;
+             done'
+    environment:
+      RCLONE_CONFIG_S3_TYPE: s3
+      RCLONE_CONFIG_S3_PROVIDER: Other
+      RCLONE_CONFIG_S3_ENDPOINT: http://garage:3900
+      RCLONE_CONFIG_S3_ACCESS_KEY_ID: ${RM_MINIO_ACCESS_KEY}
+      RCLONE_CONFIG_S3_SECRET_ACCESS_KEY: ${RM_MINIO_SECRET_KEY}
+      RCLONE_CONFIG_S3_REGION: garage
+    volumes:
+      - garage_backups:/backups
+    depends_on:
+      - garage
+
+volumes:
+  pg_backups:
+  garage_backups:
+  nginx_certs:
+  pki_data:

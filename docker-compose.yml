@@ -1,0 +1,220 @@
+name: rainmaker
+
+x-app-image: &app-image
+  build:
+    context: .
+    dockerfile: deploy/docker/Dockerfile
+
+x-app-env: &app-env
+  RM_ENV: dev
+  RM_DEBUG: "true"
+  RM_LOG_JSON: "false"
+  RM_LOG_LEVEL: DEBUG
+  RM_SECRET_KEY: dev-secret-key-32-bytes-minimum-pad!
+  RM_DATABASE_URL: postgresql+asyncpg://rainmaker:rainmaker@postgres:5432/rainmaker
+  RM_MINIO_ENDPOINT: garage:3900
+  RM_MINIO_ACCESS_KEY: ${RM_MINIO_ACCESS_KEY:-GKxxxx_replace_me}
+  RM_MINIO_SECRET_KEY: ${RM_MINIO_SECRET_KEY:-change_me_long_secret}
+  RM_MINIO_BUCKET_OTA: ${RM_MINIO_BUCKET_OTA:-rainmaker-ota}
+  RM_MINIO_REGION: garage
+  RM_FEATURE_S3_REAL: ${RM_FEATURE_S3_REAL:-false}
+  # Devices reach the presigned URL via localhost; rewrite the host.
+  RM_MINIO_PUBLIC_ENDPOINT: ${RM_MINIO_PUBLIC_ENDPOINT:-localhost:3900}
+  RM_MINIO_PUBLIC_SECURE: ${RM_MINIO_PUBLIC_SECURE:-false}
+  RM_MQTT_BROKER_HOST: vernemq
+  RM_MQTT_BROKER_PORT: "1883"
+  RM_MQTT_WS_HOST: vernemq
+  RM_MQTT_WS_PORT: "8083"
+  RM_SMTP_HOST: smtp4dev
+  RM_SMTP_PORT: "25"
+  # Mount the CA chain so api signs CSRs with the same intermediate
+  # the simulator and (later) the real ESP32 use.
+  RM_PKI_CA_CERT_PATH: /etc/rainmaker/pki/ca-intermediate.pem
+  RM_PKI_CA_KEY_PATH: /etc/rainmaker/pki/ca-intermediate.key
+  RM_PKI_CA_ROOT_CERT_PATH: /etc/rainmaker/pki/ca-root.pem
+
+services:
+  postgres:
+    # Mirrored from timescale/timescaledb:latest-pg16 — see
+    # .github/workflows/mirror.yml. Set RM_IMAGE_TIMESCALEDB to override.
+    image: ${RM_IMAGE_TIMESCALEDB:-ghcr.io/bbinet/timescaledb:pg16}
+    environment:
+      POSTGRES_USER: rainmaker
+      POSTGRES_PASSWORD: rainmaker
+      POSTGRES_DB: rainmaker
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rainmaker -d rainmaker"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  garage:
+    image: ${RM_IMAGE_GARAGE:-ghcr.io/bbinet/garage:v1.0.1}
+    volumes:
+      - garage_data:/var/lib/garage/data
+      - garage_meta:/var/lib/garage/meta
+      - ./deploy/garage/garage.toml:/etc/garage.toml:ro
+    ports:
+      - "3900:3900"
+      - "3902:3902"
+      - "3903:3903"
+
+  vernemq:
+    image: ${RM_IMAGE_VERNEMQ:-ghcr.io/bbinet/vernemq:2.0.1}
+    environment:
+      DOCKER_VERNEMQ_ACCEPT_EULA: "yes"
+      DOCKER_VERNEMQ_ALLOW_ANONYMOUS: "off"
+      DOCKER_VERNEMQ_PLUGINS__VMQ_WEBHOOKS: "on"
+      DOCKER_VERNEMQ_PLUGINS__VMQ_PASSWD: "off"
+      DOCKER_VERNEMQ_PLUGINS__VMQ_ACL: "off"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__POOL_TIMEOUT: "5000"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_REGISTER__HOOK: "auth_on_register"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_REGISTER__ENDPOINT: "http://vmq-authz:8001/auth/on_register"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_PUBLISH__HOOK: "auth_on_publish"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_PUBLISH__ENDPOINT: "http://vmq-authz:8001/auth/on_publish"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_SUBSCRIBE__HOOK: "auth_on_subscribe"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__AUTH_ON_SUBSCRIBE__ENDPOINT: "http://vmq-authz:8001/auth/on_subscribe"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__ON_CLIENT_GONE__HOOK: "on_client_gone"
+      DOCKER_VERNEMQ_VMQ_WEBHOOKS__ON_CLIENT_GONE__ENDPOINT: "http://vmq-authz:8001/on_client_offline"
+      # mTLS listener for devices — VerneMQ verifies the cert against
+      # ca-chain.pem and propagates the CN as the MQTT username.
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT: "0.0.0.0:8883"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__CAFILE: "/etc/vernemq/certs/ca-chain.pem"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__CERTFILE: "/etc/vernemq/certs/server.pem"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__KEYFILE: "/etc/vernemq/certs/server.key"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__REQUIRE_CERTIFICATE: "on"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__USE_IDENTITY_AS_USERNAME: "on"
+      DOCKER_VERNEMQ_LISTENER__SSL__DEFAULT__TLS_VERSION: "tlsv1.2"
+      # Plain TCP listener for backend services (only reachable on the
+      # compose network or via a NetworkPolicy-restricted Service in k8s).
+      DOCKER_VERNEMQ_LISTENER__TCP__DEFAULT: "0.0.0.0:1883"
+      DOCKER_VERNEMQ_LISTENER__WS__DEFAULT: "0.0.0.0:8083"
+      DOCKER_VERNEMQ_LISTENER__HTTP__DEFAULT: "0.0.0.0:8888"
+    ports:
+      - "1883:1883"
+      - "8883:8883"
+      - "8083:8083"
+      - "8888:8888"
+    volumes:
+      - vernemq_data:/vernemq/data
+      - ./var/pki/ca-chain.pem:/etc/vernemq/certs/ca-chain.pem:ro
+      - ./var/pki/server.pem:/etc/vernemq/certs/server.pem:ro
+      - ./var/pki/server.key:/etc/vernemq/certs/server.key:ro
+    depends_on:
+      - vmq-authz
+
+  smtp4dev:
+    image: ${RM_IMAGE_SMTP4DEV:-ghcr.io/bbinet/smtp4dev:v3}
+    ports:
+      - "5025:25"
+      - "5080:80"
+
+  migrate:
+    <<: *app-image
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *app-env
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *app-image
+    command: ["python", "-m", "app.entrypoints.api"]
+    environment:
+      <<: *app-env
+    # No host port mapping when replicated — NGINX is the single
+    # entry point. Direct access for tests is still available via
+    # `docker compose exec api curl localhost:8000` or via NGINX.
+    expose:
+      - "8000"
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
+    # K8s-equivalent: runAsNonRoot (uid 1000 baked into the image),
+    # readOnlyRootFilesystem (read_only=true) + emptyDir tmp.
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  vmq-authz:
+    <<: *app-image
+    command: ["python", "-m", "app.entrypoints.vmq_authz"]
+    environment:
+      <<: *app-env
+    expose:
+      - "8001"
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  mqtt-ingestor:
+    <<: *app-image
+    command: ["python", "-m", "app.entrypoints.mqtt_ingestor"]
+    environment:
+      <<: *app-env
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app-image
+    command: ["python", "-m", "app.entrypoints.worker"]
+    environment:
+      <<: *app-env
+    volumes:
+      - ./var/pki:/etc/rainmaker/pki:ro
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # ----- Production-like NGINX Ingress emulation -----
+  #
+  # In Kubernetes, three separate Ingress resources expose the same
+  # `api` Service on three hostnames with different TLS configs (mTLS
+  # only on `node.*`). Compose-side we get the same shape: one NGINX
+  # process listening on three ports with the per-host configs.
+  nginx:
+    image: ${RM_IMAGE_NGINX:-ghcr.io/bbinet/nginx:1.27-alpine}
+    ports:
+      - "443:443"    # api.local
+      - "444:444"    # claim.local
+      - "445:445"    # node.local  (mTLS)
+    volumes:
+      - ./deploy/nginx/rainmaker.conf:/etc/nginx/nginx.conf:ro
+      - ./var/pki/nginx-chain.pem:/etc/nginx/certs/nginx-chain.pem:ro
+      - ./var/pki/nginx.key:/etc/nginx/certs/nginx.key:ro
+      - ./var/pki/ca-chain.pem:/etc/nginx/certs/ca-chain.pem:ro
+    depends_on:
+      - api
+
+volumes:
+  pg_data:
+  garage_data:
+  garage_meta:
+  vernemq_data:

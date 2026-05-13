@@ -1,0 +1,82 @@
+name: publish
+
+# Publishes the `rainmaker-server` image to GitHub Container Registry on
+# every release tag (vX.Y.Z), plus a `latest` tag on push to main and a
+# `<branch>-<shortsha>` tag for branch builds (handy for staging
+# deploys).
+#
+# Image is consumable as:
+#   ghcr.io/bbinet/esp-rainmaker-server:v0.1.0
+#   ghcr.io/bbinet/esp-rainmaker-server:latest
+#   ghcr.io/bbinet/esp-rainmaker-server:main-9b02b86
+#
+# The k8s manifests and the prod compose overlay are wired to a
+# private/public registry of your choice — switch them to
+# `ghcr.io/bbinet/esp-rainmaker-server:<tag>` once you've shipped a
+# release.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Override tag (defaults to git ref)"
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/esp-rainmaker-server
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
