@@ -699,9 +699,10 @@ app/
 
 ### CI/CD (`.github/workflows/`)
 
-- `ci.yml` — `lint-type-unit` (container Trixie : ruff + mypy strict + 9 unit
-  tests) + `integration` (host : 69 testcontainers tests) + `docker-build`
-  (image multi-stage) ; `live-verify` job en cours d'ajout (PR #3)
+- `ci.yml` — 4 jobs : `lint-type-unit` (container Trixie : ruff + mypy strict
+  + 9 unit tests) + `integration` (host : 69 testcontainers tests) +
+  `docker-build` (image multi-stage) + `live-verify` (compose stack +
+  `make test-live` = 21 + 13 cases)
 - `publish.yml` — sur tag `v*.*.*` : build multi-arch (amd64 + arm64), push
   `ghcr.io/bbinet/esp-rainmaker-server:<tag>` + SBOM + provenance
 - `mirror.yml` — cron weekly + dispatch : retag 7 images Docker Hub vers
